@@ -21,7 +21,7 @@ STRINGS = {
             "Одно фото в день; если пришлёшь новое — заменю старое.\n"
             "Команды: /today — задание дня, /lang — язык, /stop — отписаться.\n\n"
             "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
-            "github.com/kaydanov1997/what-do-you-see-bot"
+            "github.com/kaydanych/what-do-you-see-bot"
         ),
         "PROMPT": "📸 Задание на сегодня:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Сегодняшнее задание ещё в силе — лови:",
@@ -57,7 +57,7 @@ STRINGS = {
             "/lang — сменить язык\n"
             "/stop — отписаться\n\n"
             "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
-            "github.com/kaydanov1997/what-do-you-see-bot"
+            "github.com/kaydanych/what-do-you-see-bot"
         ),
     },
     "en": {
@@ -71,7 +71,7 @@ STRINGS = {
             "One photo per day; a new one replaces the old.\n"
             "Commands: /today — today's challenge, /lang — language, /stop — unsubscribe.\n\n"
             "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
-            "github.com/kaydanov1997/what-do-you-see-bot"
+            "github.com/kaydanych/what-do-you-see-bot"
         ),
         "PROMPT": "📸 Today's challenge:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Today's challenge is still on — here it is:",
@@ -109,7 +109,7 @@ STRINGS = {
             "/lang — change language\n"
             "/stop — unsubscribe\n\n"
             "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
-            "github.com/kaydanov1997/what-do-you-see-bot"
+            "github.com/kaydanych/what-do-you-see-bot"
         ),
     },
 }
