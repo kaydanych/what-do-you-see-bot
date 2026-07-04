@@ -1,0 +1,11 @@
+services:
+  photobot:
+    build: .
+    container_name: photobot
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - DATA_DIR=/data
+    volumes:
+      # On the Synology change the left side to /volume1/docker/photobot/data
+      - ./data:/data
