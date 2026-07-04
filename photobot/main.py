@@ -3,13 +3,14 @@ import logging
 import traceback
 from logging.handlers import RotatingFileHandler
 
-from telegram import Update
+from telegram import LinkPreviewOptions, Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    Defaults,
     MessageHandler,
     filters,
 )
@@ -68,7 +69,12 @@ async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 def build_app() -> Application:
-    app = ApplicationBuilder().token(config.BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(config.BOT_TOKEN)
+        .defaults(Defaults(link_preview_options=LinkPreviewOptions(is_disabled=True)))
+        .build()
+    )
 
     # user commands
     app.add_handler(CommandHandler("start", usr.cmd_start))
