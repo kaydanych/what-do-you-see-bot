@@ -19,7 +19,9 @@ STRINGS = {
             "отправляешь мне своё фото, а вечером все, кто участвовал, получают "
             "общий коллаж дня.\n\n"
             "Одно фото в день; если пришлёшь новое — заменю старое.\n"
-            "Команды: /today — задание дня, /lang — язык, /stop — отписаться."
+            "Команды: /today — задание дня, /lang — язык, /stop — отписаться.\n\n"
+            "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
+            "github.com/kaydanov1997/what-do-you-see-bot"
         ),
         "PROMPT": "📸 Задание на сегодня:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Сегодняшнее задание ещё в силе — лови:",
@@ -53,7 +55,9 @@ STRINGS = {
             "• после {deadline} все участники дня получают общий коллаж\n\n"
             "/today — задание дня и статус твоего фото\n"
             "/lang — сменить язык\n"
-            "/stop — отписаться"
+            "/stop — отписаться\n\n"
+            "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
+            "github.com/kaydanov1997/what-do-you-see-bot"
         ),
     },
     "en": {
@@ -65,7 +69,9 @@ STRINGS = {
             "before {deadline}, and in the evening everyone who took part gets the "
             "collage of the day.\n\n"
             "One photo per day; a new one replaces the old.\n"
-            "Commands: /today — today's challenge, /lang — language, /stop — unsubscribe."
+            "Commands: /today — today's challenge, /lang — language, /stop — unsubscribe.\n\n"
+            "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
+            "github.com/kaydanov1997/what-do-you-see-bot"
         ),
         "PROMPT": "📸 Today's challenge:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Today's challenge is still on — here it is:",
@@ -101,7 +107,9 @@ STRINGS = {
             "• after {deadline} everyone who took part gets the collage\n\n"
             "/today — today's challenge and your photo status\n"
             "/lang — change language\n"
-            "/stop — unsubscribe"
+            "/stop — unsubscribe\n\n"
+            "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
+            "github.com/kaydanov1997/what-do-you-see-bot"
         ),
     },
 }
