@@ -221,11 +221,30 @@ async def send_collage(
             await notify_admins(context, f"📭 {date}: no submissions, no collage.")
         return "no submissions"
 
-    out = day_dir(date) / ("collage_preview.jpg" if preview_to else "collage.jpg")
     paths = [Path(p["file_path"]) for p in photos]
-    collage.build_collage(paths, out)
-
     n = len(photos)
+
+    prompt_en = prompt_ru = None
+    day = db.get_day(date)
+    if day and day["prompt_id"]:
+        prompt = db.get_prompt(day["prompt_id"])
+        if prompt:
+            prompt_en, prompt_ru = prompt["text"], prompt["text_ru"]
+
+    # Same mosaic in every language, only the header/footer text differs.
+    seed = hash(date) & 0x7FFFFFFF
+
+    def collage_path(lang: str) -> Path:
+        stem = "collage_preview" if preview_to else "collage"
+        out = day_dir(date) / f"{stem}_{lang}.jpg"
+        prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
+        collage.build_collage(
+            paths, out, prompt=prompt_text, on_date=date, lang=lang, seed=seed
+        )
+        return out
+
+    def lang_of(uid: int) -> str:
+        return "ru" if db.get_user_lang(uid) == "ru" else "en"
 
     def caption_for(uid: int) -> str:
         lang = db.get_user_lang(uid)
@@ -234,6 +253,7 @@ async def send_collage(
         return t(lang, "COLLAGE_CAPTION", n=n)
 
     if preview_to is not None:
+        out = collage_path(lang_of(preview_to))
         with open(out, "rb") as f:
             await context.bot.send_photo(
                 preview_to, f, caption=f"[preview] {caption_for(preview_to)}"
@@ -241,16 +261,20 @@ async def send_collage(
         return f"preview sent ({n} photos)"
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
-    file_id = None
+    # Build each needed collage once, then reuse Telegram's file_id per language.
+    file_ids: dict[str, str] = {}
     sent = 0
     for uid in recipients:
+        lang = lang_of(uid)
         try:
-            if file_id is None:
-                with open(out, "rb") as f:
+            if lang not in file_ids:
+                with open(collage_path(lang), "rb") as f:
                     msg = await context.bot.send_photo(uid, f, caption=caption_for(uid))
-                file_id = msg.photo[-1].file_id
+                file_ids[lang] = msg.photo[-1].file_id
             else:
-                await context.bot.send_photo(uid, file_id, caption=caption_for(uid))
+                await context.bot.send_photo(
+                    uid, file_ids[lang], caption=caption_for(uid)
+                )
             sent += 1
         except Forbidden:
             db.set_user_status(uid, "inactive")

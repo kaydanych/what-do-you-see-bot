@@ -13,15 +13,23 @@ STRINGS = {
     "ru": {
         "LANG_SET": "Готово, дальше общаемся по-русски 🇷🇺",
         "WELCOME": (
-            "Привет, {name}! 👋\n\n"
-            "Это ежедневная фото-игра. Каждое утро в {prompt_time} (по Берлину) я присылаю "
-            "задание — например, «пришли фото с водой». До {deadline} ты "
-            "отправляешь мне своё фото, а вечером все, кто участвовал, получают "
-            "общий коллаж дня.\n\n"
-            "Одно фото в день; если пришлёшь новое — заменю старое.\n"
-            "Команды: /today — задание дня, /lang — язык, /stop — отписаться.\n\n"
-            "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
-            "github.com/kaydanych/what-do-you-see-bot"
+            "Привет, {name}, добро пожаловать в маленькую игру, которую я придумал!\n\n"
+            "Мне нравится замечать мир вокруг через фотографии, и хочется "
+            "поделиться этим с тобой. Мы так часто не замечаем магию обычной "
+            "жизни — цвета, кожа, предметы, то, как один кадр может значить "
+            "столько разного для разных пар глаз, как две фотографии могут вдруг "
+            "совпасть и связаться на каком-то более глубоком уровне. Эта игра — "
+            "маленький повод замечать, ловить, делиться и смотреть.\n\n"
+            "Как это работает. Каждое утро в {prompt_time} (по Берлину) я "
+            "присылаю задание — например, «пришли фото с водой». До {deadline} ты "
+            "отправляешь мне своё фото, понимая задание так, как тебе близко, а "
+            "вечером все, кто участвовал, получают общий коллаж дня. Ближе к "
+            "вечеру я пришлю одно напоминание. Хочешь заменить фото? Просто "
+            "пришли новое — оно заменит старое.\n\n"
+            "Команды: /start — перезапустить, /today — задание дня, /lang — язык, "
+            "/stop — отписаться.\n\n"
+            "Разработка всё ещё в процессе — буду рад обратной связи через "
+            "@kaydanych. Вперед замечать!"
         ),
         "PROMPT": "📸 Задание на сегодня:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Сегодняшнее задание ещё в силе — лови:",
@@ -64,15 +72,23 @@ STRINGS = {
     "en": {
         "LANG_SET": "Done, English it is 🇬🇧",
         "WELCOME": (
-            "Hi, {name}! 👋\n\n"
-            "This is a daily photo game. Every morning at {prompt_time} (Berlin time) I send a "
-            "challenge — e.g. “send me a photo with water”. You send me your photo "
-            "before {deadline}, and in the evening everyone who took part gets the "
-            "collage of the day.\n\n"
-            "One photo per day; a new one replaces the old.\n"
-            "Commands: /today — today's challenge, /lang — language, /stop — unsubscribe.\n\n"
-            "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
-            "github.com/kaydanych/what-do-you-see-bot"
+            "Hey {name}, welcome to the little game I made!\n\n"
+            "I love noticing the world around us through photos, and I want to "
+            "share that with you. We so often forget the magic of everyday life — "
+            "the colours, the skin, the objects, how one moment can mean so many "
+            "things to different pairs of eyes, how two photos can quietly click "
+            "and connect on some deeper level. This game is a small nudge to "
+            "notice, to capture, to share, and to look.\n\n"
+            "Here's how it works. Every morning at {prompt_time} (Berlin time) I "
+            "send a challenge — e.g. “send me a photo with water”. You send me "
+            "your photo before {deadline}, following the challenge however it "
+            "makes sense to you, and in the evening everyone who took part gets "
+            "the collage of the day. I'll send one reminder towards the evening. "
+            "Want to swap your photo? Just send a new one and it replaces the old.\n\n"
+            "Commands: /start — restart, /today — today's challenge, /lang — language, "
+            "/stop — unsubscribe.\n\n"
+            "Still very much a work in progress — I'd love your feedback via "
+            "@kaydanych. Enjoy noticing!"
         ),
         "PROMPT": "📸 Today's challenge:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Today's challenge is still on — here it is:",
