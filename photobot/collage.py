@@ -15,11 +15,24 @@ def _load_cell(path: Path, cell: int) -> Image.Image:
 
 
 def _grid(n: int) -> tuple[int, int]:
-    if n == 1:
-        return 2, 2
-    cols = math.ceil(math.sqrt(n * 4 / 3))
-    rows = math.ceil(n / cols)
-    return cols, rows
+    """Smallest gap-free-ish grid with a roughly 4:3 shape.
+
+    Considers the two column counts bracketing the 4:3 ideal and picks the
+    one leaving the fewest empty cells (so 4 photos -> 2x2, not 3x2, and a
+    lone photo fills the frame instead of being duplicated 4x), breaking
+    ties toward the 4:3 aspect.
+    """
+    ideal = math.sqrt(n * 4 / 3)
+    candidates = {max(1, math.floor(ideal)), math.ceil(ideal)}
+    best = None
+    for cols in candidates:
+        rows = math.ceil(n / cols)
+        empty = cols * rows - n
+        aspect_penalty = abs((cols / rows) - 4 / 3)
+        score = (empty, aspect_penalty)
+        if best is None or score < best[0]:
+            best = (score, (cols, rows))
+    return best[1]
 
 
 def build_collage(photo_paths: list[Path], out_path: Path) -> Path:
