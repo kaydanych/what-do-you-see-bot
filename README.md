@@ -1,8 +1,43 @@
-# Photobot
+# 📸 Photobot — a daily photo game for your group
 
-Daily photo-prompt Telegram bot: sends a prompt every morning, collects one
-photo per user until the deadline, then sends everyone who participated a
-collage of the day. See [DESIGN.md](DESIGN.md) for the full design.
+**[@what_do_you_see_bot](https://t.me/what_do_you_see_bot)** · self-hosted Telegram bot · RU 🇷🇺 / EN 🇬🇧
+
+Every morning the bot sends everyone the same tiny creative prompt —
+*"send a photo with water"*, *"something that made you smile today"*. Each
+person replies with **one** photo before the evening deadline. Then the bot
+stitches all of that day's photos into a single collage and sends it back —
+**only to the people who played**. Next morning, a new prompt. It's a quiet
+daily ritual for a closed circle of friends: a reason to look a little closer
+at an ordinary day.
+
+![Example collage of the day](docs/collage-example.jpg)
+
+## What it does
+
+- 🗓 **One prompt a day** from a curated bilingual library, sent to everyone at once
+- 📷 **One photo per person** — a new one replaces your old one, right up to the deadline
+- 🖼 **Automatic collage** at the end of the day, shared only with that day's participants
+- 🧹 **Admin moderation window** — drop a photo or ban a sender before the collage goes out
+- 🇷🇺🇬🇧 **Per-user language**, prompts sent verbatim in `RU | EN` format
+- 🏠 **Self-hosted & private** — long polling, so no open ports; photos never leave your machine
+
+## How a day works
+
+Times are Europe/Berlin and live in the DB — change them from the admin chat
+with `/settimes`, no restart needed.
+
+| Time (default) | What happens |
+|---|---|
+| **09:00** | A random unused prompt is picked from the library and sent to all active users |
+| 09:00–21:00 | Users submit photos — one each, a new one replaces the old |
+| **19:00** | Gentle reminder, only to those who haven't submitted yet |
+| **21:00** | Deadline. Late photos are politely rejected. Admin gets a numbered contact sheet for moderation |
+| 21:00–21:10 | Moderation window: `/exclude N`, `/ban N`, `/include N` |
+| **21:10** | Collage is built and sent to everyone who took part |
+
+The bot self-heals: a tick job every minute compares the clock to the day's
+state, so runtime schedule changes and NAS reboots can't silently kill a day.
+See [DESIGN.md](DESIGN.md) for the full design.
 
 ## One-time setup
 
@@ -86,3 +121,9 @@ touched by restarts or rebuilds.
 - `/forceprompt`, `/forcecollage` — re-fire a missed step by hand.
 - After a NAS reboot the bot catches up on its own (it re-checks the day's
   state every minute).
+
+## Stack
+
+Python 3.12 · [`python-telegram-bot`](https://python-telegram-bot.org) v21
+(async, built-in JobQueue scheduler) · Pillow (collage) · SQLite · Docker.
+Full design notes in [DESIGN.md](DESIGN.md).
