@@ -48,11 +48,42 @@ def test_collage_shapes(tmp_path, n):
     img = Image.open(out)
     w, h = img.size
     assert max(w, h) <= config.COLLAGE_MAX_SIDE
-    # rectangle is fully filled: dimensions match an exact grid
-    cell, gut = config.COLLAGE_CELL_PX, config.COLLAGE_GUTTER_PX
-    # (before downscale the canvas is cols*cell+(cols+1)*gut; after thumbnail
-    # aspect is preserved, so just sanity-check aspect is between 0.4 and 2.5)
-    assert 0.4 < w / h < 2.5
+    # justified mosaic: adaptive width keeps the card within a sane aspect band
+    assert 0.35 < w / h < 2.5
+
+
+@pytest.mark.parametrize("lang", ["en", "ru"])
+def test_collage_with_header(tmp_path, lang):
+    """Localised prompt + date header must render without error."""
+    prompts = {
+        "en": "Send a photo of something older than you",
+        "ru": "Пришли фото чего-то старше тебя",
+    }
+    paths = make_photos(tmp_path, 5)
+    out = collage.build_collage(
+        paths,
+        tmp_path / f"hdr_{lang}.jpg",
+        prompt=prompts[lang],
+        on_date="2026-07-12",
+        lang=lang,
+    )
+    assert out.exists()
+    assert Image.open(out).size[0] > 0
+
+
+def test_collage_seed_identical_layout(tmp_path):
+    """Same seed => identical mosaic size regardless of header language."""
+    paths = make_photos(tmp_path, 9)
+    en = collage.build_collage(
+        paths, tmp_path / "en.jpg", prompt="hello", on_date="2026-07-12",
+        lang="en", seed=42,
+    )
+    ru = collage.build_collage(
+        paths, tmp_path / "ru.jpg", prompt="привет", on_date="2026-07-12",
+        lang="ru", seed=42,
+    )
+    # width is header-independent; identical seed must yield identical width
+    assert Image.open(en).size[0] == Image.open(ru).size[0]
 
 
 def test_collage_empty_raises(tmp_path):

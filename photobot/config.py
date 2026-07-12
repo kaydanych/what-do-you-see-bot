@@ -28,10 +28,22 @@ DEFAULT_SETTINGS = {
 }
 
 MAX_PHOTO_SIDE = 2560      # stored photos are downscaled to this
-COLLAGE_CELL_PX = 600
-COLLAGE_GUTTER_PX = 4
+COLLAGE_CELL_PX = 600      # square cell size for the moderation contact sheet
+COLLAGE_GUTTER_PX = 4      # gutter for the moderation contact sheet
 COLLAGE_MAX_CELLS = 108    # 12 x 9
 COLLAGE_MAX_SIDE = 4000    # final canvas downscaled to this before sending
+
+# --- Daily collage (justified-mosaic "card") --------------------------------
+FONTS_DIR = Path(__file__).resolve().parent / "fonts"
+COLLAGE_WIDTH = 1500          # canvas content width in px (before max-side scale)
+COLLAGE_BG = "#141414"        # mat colour behind the photos
+COLLAGE_FG = "#f2f2f2"        # header prompt text
+COLLAGE_DIM = "#8a8f98"       # date kicker + footer
+COLLAGE_RADIUS = 18           # tile corner radius
+COLLAGE_GAP = 14              # space between tiles
+COLLAGE_PAD = 48              # outer margin
+COLLAGE_ASPECT_MIN = 0.55     # clamp extreme portraits (below this = mild crop)
+COLLAGE_ASPECT_MAX = 1.9      # clamp extreme panoramas
 
 
 def validate() -> None:
