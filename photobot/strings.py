@@ -14,7 +14,7 @@ STRINGS = {
         "LANG_SET": "Готово, дальше общаемся по-русски 🇷🇺",
         "WELCOME": (
             "Привет, {name}! 👋\n\n"
-            "Это ежедневная фото-игра. Каждое утро в {prompt_time} я присылаю "
+            "Это ежедневная фото-игра. Каждое утро в {prompt_time} (по Берлину) я присылаю "
             "задание — например, «пришли фото с водой». До {deadline} ты "
             "отправляешь мне своё фото, а вечером все, кто участвовал, получают "
             "общий коллаж дня.\n\n"
@@ -52,7 +52,8 @@ STRINGS = {
             "Как это работает:\n"
             "• каждое утро в {prompt_time} приходит задание\n"
             "• до {deadline} присылаешь одно фото (новое заменяет старое)\n"
-            "• после {deadline} все участники дня получают общий коллаж\n\n"
+            "• после {deadline} все участники дня получают общий коллаж\n"
+            "• все времена — по Берлину (CET/CEST)\n\n"
             "/today — задание дня и статус твоего фото\n"
             "/lang — сменить язык\n"
             "/stop — отписаться\n\n"
@@ -64,7 +65,7 @@ STRINGS = {
         "LANG_SET": "Done, English it is 🇬🇧",
         "WELCOME": (
             "Hi, {name}! 👋\n\n"
-            "This is a daily photo game. Every morning at {prompt_time} I send a "
+            "This is a daily photo game. Every morning at {prompt_time} (Berlin time) I send a "
             "challenge — e.g. “send me a photo with water”. You send me your photo "
             "before {deadline}, and in the evening everyone who took part gets the "
             "collage of the day.\n\n"
@@ -104,7 +105,8 @@ STRINGS = {
             "How it works:\n"
             "• every morning at {prompt_time} a challenge arrives\n"
             "• you send one photo before {deadline} (a new one replaces the old)\n"
-            "• after {deadline} everyone who took part gets the collage\n\n"
+            "• after {deadline} everyone who took part gets the collage\n"
+            "• all times are Berlin time (CET/CEST)\n\n"
             "/today — today's challenge and your photo status\n"
             "/lang — change language\n"
             "/stop — unsubscribe\n\n"

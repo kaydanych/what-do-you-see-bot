@@ -20,6 +20,26 @@ def make_photos(tmp_path, n):
     return paths
 
 
+@pytest.mark.parametrize(
+    "n, grid",
+    [
+        (1, (1, 1)),
+        (2, (2, 1)),
+        (3, (2, 2)),
+        (4, (2, 2)),
+        (5, (3, 2)),
+        (6, (3, 2)),
+        (7, (4, 2)),
+    ],
+)
+def test_grid_minimal_padding(n, grid):
+    cols, rows = collage._grid(n)
+    assert (cols, rows) == grid
+    cells = cols * rows
+    # never fewer cells than photos, and never more than one short row of pad
+    assert n <= cells < n + cols
+
+
 @pytest.mark.parametrize("n", [1, 2, 3, 7, 23, 60])
 def test_collage_shapes(tmp_path, n):
     paths = make_photos(tmp_path, n)

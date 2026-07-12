@@ -1,8 +1,43 @@
-# Photobot
+# 📸 Photobot — a daily photo game for your group
 
-Daily photo-prompt Telegram bot: sends a prompt every morning, collects one
-photo per user until the deadline, then sends everyone who participated a
-collage of the day. See [DESIGN.md](DESIGN.md) for the full design.
+**[@what_do_you_see_bot](https://t.me/what_do_you_see_bot)** · self-hosted Telegram bot · RU 🇷🇺 / EN 🇬🇧
+
+Every morning the bot sends everyone the same tiny creative prompt —
+*"send a photo with water"*, *"something that made you smile today"*. Each
+person replies with **one** photo before the evening deadline. Then the bot
+stitches all of that day's photos into a single collage and sends it back —
+**only to the people who played**. Next morning, a new prompt. It's a quiet
+daily ritual for a closed circle of friends: a reason to look a little closer
+at an ordinary day.
+
+![Example collage of the day](docs/collage-example.jpg)
+
+## What it does
+
+- 🗓 **One prompt a day** from a curated bilingual library, sent to everyone at once
+- 📷 **One photo per person** — a new one replaces your old one, right up to the deadline
+- 🖼 **Automatic collage** at the end of the day, shared only with that day's participants
+- 🧹 **Admin moderation window** — drop a photo or ban a sender before the collage goes out
+- 🇷🇺🇬🇧 **Per-user language**, prompts sent verbatim in `RU | EN` format
+- 🏠 **Self-hosted & private** — long polling, so no open ports; photos never leave your machine
+
+## How a day works
+
+Times are Europe/Berlin and live in the DB — change them from the admin chat
+with `/settimes`, no restart needed.
+
+| Time (default) | What happens |
+|---|---|
+| **09:00** | A random unused prompt is picked from the library and sent to all active users |
+| 09:00–21:00 | Users submit photos — one each, a new one replaces the old |
+| **19:00** | Gentle reminder, only to those who haven't submitted yet |
+| **21:00** | Deadline. Late photos are politely rejected. Admin gets a numbered contact sheet for moderation |
+| 21:00–21:10 | Moderation window: `/exclude N`, `/ban N`, `/include N` |
+| **21:10** | Collage is built and sent to everyone who took part |
+
+The bot self-heals: a tick job every minute compares the clock to the day's
+state, so runtime schedule changes and NAS reboots can't silently kill a day.
+See [DESIGN.md](DESIGN.md) for the full design.
 
 ## One-time setup
 
@@ -43,15 +78,38 @@ before the collage goes out. Prompts can be bilingual:
 
 ## Deploy on the Synology NAS
 
-1. Copy this folder (without `.venv/` and `data/`) to the NAS, e.g.
-   `/volume1/docker/photobot/`.
-2. Edit `docker-compose.yml`: volume left side → `/volume1/docker/photobot/data`.
-3. Container Manager → Project → Create → point at the folder → build & run.
-   (Or via SSH: `docker compose up -d --build`.)
-4. Done. Long polling means no ports, no DDNS, no certificates.
+Web UI only (QuickConnect), no SSH needed:
 
-Updating code later: copy new files over, rebuild the container. The database
-and photos live in `data/` and survive rebuilds.
+1. In File Station, copy this folder (without `.venv/`, `.git/`, `__pycache__/`)
+   to `/volume1/docker/photobot/`. Create the `.env` there with your real
+   `BOT_TOKEN` / `ADMIN_IDS` (it's gitignored, so it isn't in the copy).
+2. **Create an empty `data/` folder** inside it. Container Manager does *not*
+   auto-create bind-mount sources — without it the container fails to start
+   with `Bind mount failed: ... does not exist`. The compose file mounts
+   `./data` and `./photobot` relative to the project folder, so no path edits
+   are needed.
+3. Container Manager → Project → Create → point at the folder → Build.
+4. Done. Long polling means no ports, no DDNS, no certificates. `restart:
+   unless-stopped` brings it back after reboots; it re-checks the day's state
+   every minute, so a missed step self-heals.
+
+### Updating on the NAS
+
+Code is bind-mounted from the host (`./photobot`), so how you deploy depends
+on what changed:
+
+- **Python-only change** (e.g. `collage.py`, `strings.py`): overwrite the file
+  in File Station, then Container Manager → Project → **Restart**. No rebuild.
+- **`requirements.txt` / dependency change**: needs a full rebuild. Because
+  Container Manager's Build **reuses cached layers** (a plain Build/Restart can
+  keep running stale code), force a clean one: Stop → Action → Clean → **Image
+  tab → delete `photobot-photobot:latest`** → Build.
+
+Verify what's actually running via Container → `photobot` → Terminal, e.g.
+`python -c "from photobot import collage; print(collage._grid(4))"`.
+
+The database and photos live in `data/` (outside the image) and are never
+touched by restarts or rebuilds.
 
 **Backup**: include `/volume1/docker/photobot/data` in Hyper Backup.
 
@@ -63,3 +121,9 @@ and photos live in `data/` and survive rebuilds.
 - `/forceprompt`, `/forcecollage` — re-fire a missed step by hand.
 - After a NAS reboot the bot catches up on its own (it re-checks the day's
   state every minute).
+
+## Stack
+
+Python 3.12 · [`python-telegram-bot`](https://python-telegram-bot.org) v21
+(async, built-in JobQueue scheduler) · Pillow (collage) · SQLite · Docker.
+Full design notes in [DESIGN.md](DESIGN.md).
