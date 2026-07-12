@@ -18,6 +18,6 @@ Full design in `DESIGN.md`, ops/setup in `README.md`.
   changed via admin chat commands (`/settimes`), not in code — no restart
   needed.
 - User-facing strings are bilingual RU|EN in `strings.py`; prompts use the
-  `RU | EN` pipe format.
+  `EN | RU` pipe format (English first, matching `parse_prompt_line`).
 - Currently runs locally; Synology NAS deploy (docker-compose) is planned but
   not done yet.
