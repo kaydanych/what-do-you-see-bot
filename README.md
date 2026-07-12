@@ -43,15 +43,38 @@ before the collage goes out. Prompts can be bilingual:
 
 ## Deploy on the Synology NAS
 
-1. Copy this folder (without `.venv/` and `data/`) to the NAS, e.g.
-   `/volume1/docker/photobot/`.
-2. Edit `docker-compose.yml`: volume left side → `/volume1/docker/photobot/data`.
-3. Container Manager → Project → Create → point at the folder → build & run.
-   (Or via SSH: `docker compose up -d --build`.)
-4. Done. Long polling means no ports, no DDNS, no certificates.
+Web UI only (QuickConnect), no SSH needed:
 
-Updating code later: copy new files over, rebuild the container. The database
-and photos live in `data/` and survive rebuilds.
+1. In File Station, copy this folder (without `.venv/`, `.git/`, `__pycache__/`)
+   to `/volume1/docker/photobot/`. Create the `.env` there with your real
+   `BOT_TOKEN` / `ADMIN_IDS` (it's gitignored, so it isn't in the copy).
+2. **Create an empty `data/` folder** inside it. Container Manager does *not*
+   auto-create bind-mount sources — without it the container fails to start
+   with `Bind mount failed: ... does not exist`. The compose file mounts
+   `./data` and `./photobot` relative to the project folder, so no path edits
+   are needed.
+3. Container Manager → Project → Create → point at the folder → Build.
+4. Done. Long polling means no ports, no DDNS, no certificates. `restart:
+   unless-stopped` brings it back after reboots; it re-checks the day's state
+   every minute, so a missed step self-heals.
+
+### Updating on the NAS
+
+Code is bind-mounted from the host (`./photobot`), so how you deploy depends
+on what changed:
+
+- **Python-only change** (e.g. `collage.py`, `strings.py`): overwrite the file
+  in File Station, then Container Manager → Project → **Restart**. No rebuild.
+- **`requirements.txt` / dependency change**: needs a full rebuild. Because
+  Container Manager's Build **reuses cached layers** (a plain Build/Restart can
+  keep running stale code), force a clean one: Stop → Action → Clean → **Image
+  tab → delete `photobot-photobot:latest`** → Build.
+
+Verify what's actually running via Container → `photobot` → Terminal, e.g.
+`python -c "from photobot import collage; print(collage._grid(4))"`.
+
+The database and photos live in `data/` (outside the image) and are never
+touched by restarts or rebuilds.
 
 **Backup**: include `/volume1/docker/photobot/data` in Hyper Backup.
 
