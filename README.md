@@ -123,14 +123,29 @@ interval. `.env` and `data/` are gitignored, so git never touches them.
    Run it once (select task → Run), check `git status` works via a follow-up
    run if unsure, then delete this task.
 3. Create the recurring task: **Scheduled Task → User-defined script**, user
-   `root`, schedule **every 5 minutes**, script:
+   `root`, schedule **Daily**, frequency **every 5 minutes** (in the Schedule
+   tab's Frequency dropdown), script:
 
    ```sh
    /bin/sh /volume1/docker/photobot/update.sh
    ```
 
-   In the task's Settings tab, enable *Send run details by email → only when
-   the script terminates abnormally* to get notified of failed deploys.
+   If your DSM's Frequency dropdown only offers hourly, schedule hourly and
+   loop inside the script instead — 11 checks 5 min apart, ending before the
+   next hourly run:
+
+   ```sh
+   for i in 1 2 3 4 5 6 7 8 9 10 11; do
+       /bin/sh /volume1/docker/photobot/update.sh
+       sleep 300
+   done
+   ```
+
+   Either way, **select the task → Run** deploys immediately — handy right
+   after a push instead of waiting out the interval (works remotely via
+   QuickConnect). In the task's Settings tab, enable *Send run details by
+   email → only when the script terminates abnormally* to get notified of
+   failed deploys.
 
 Deploy activity is logged to `/volume1/docker/photobot/deploy.log` (visible in
 File Station); up-to-date polls log nothing. Every deploy also stamps
