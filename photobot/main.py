@@ -15,7 +15,7 @@ from telegram.ext import (
     filters,
 )
 
-from . import config, db, handlers_admin as adm, handlers_user as usr, jobs
+from . import config, db, handlers_admin as adm, handlers_user as usr, jobs, version
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,25 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
             log.exception("failed to report error to admin %s", admin_id)
 
 
+async def notify_deploy(app: Application) -> None:
+    """DM the admins once when new code starts running.
+
+    update.sh stamps data/deploy_info on every deploy; the last announced
+    commit is kept in the DB, so plain restarts and NAS reboots stay silent.
+    """
+    info = version.read_deploy_info()
+    commit = info.get("commit")
+    if not commit or commit == db.get_setting("deployed_commit"):
+        return
+    text = f"🚀 Deployed {version.describe(info)}"
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await app.bot.send_message(admin_id, text)
+        except Exception:
+            log.exception("failed to send deploy notice to admin %s", admin_id)
+    db.set_setting("deployed_commit", commit)
+
+
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Route documents: admin .txt = prompt import, images = submission."""
     doc = update.message.document
@@ -73,6 +92,7 @@ def build_app() -> Application:
         ApplicationBuilder()
         .token(config.BOT_TOKEN)
         .defaults(Defaults(link_preview_options=LinkPreviewOptions(is_disabled=True)))
+        .post_init(notify_deploy)
         .build()
     )
 
@@ -105,6 +125,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("kick", adm.cmd_kick))
     app.add_handler(CommandHandler("unkick", adm.cmd_unkick))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))
+    app.add_handler(CommandHandler("version", adm.cmd_version))
 
     # content
     app.add_handler(MessageHandler(filters.PHOTO, usr.on_photo))

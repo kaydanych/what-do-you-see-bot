@@ -27,6 +27,7 @@ DEFAULT_SETTINGS = {
     "final_reminder_min": "10",  # last-call reminder this many minutes before deadline
     "collage_delay_min": "10",  # moderation window between deadline and collage
     "project_start_date": "2026-07-12",  # day 1; collage shows "Day N" counting from here
+    "deployed_commit": "",  # last build announced to admins (set on startup)
 }
 
 MAX_PHOTO_SIDE = 2560      # stored photos are downscaled to this

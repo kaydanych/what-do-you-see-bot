@@ -133,7 +133,11 @@ interval. `.env` and `data/` are gitignored, so git never touches them.
    the script terminates abnormally* to get notified of failed deploys.
 
 Deploy activity is logged to `/volume1/docker/photobot/deploy.log` (visible in
-File Station); up-to-date polls log nothing.
+File Station); up-to-date polls log nothing. Every deploy also stamps
+`data/deploy_info` with the commit, an auto-incrementing build number (the
+commit count on main) and the commit subject — on startup the bot DMs the
+admins "🚀 Deployed build N (hash) — subject" when the commit changed (plain
+restarts and reboots stay silent), and `/version` shows what's running.
 
 **Don't edit files on the NAS anymore** — `update.sh` does `git reset --hard`,
 so any manual edits under `/volume1/docker/photobot` (except `.env` and

@@ -6,7 +6,7 @@ from datetime import time
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from . import config, db, jobs
+from . import config, db, jobs, version
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,8 @@ Moderation (at the deadline you get a numbered contact sheet):
 /skipday — cancel today
 /broadcast <text> — message all active users
 /kick <id|@username> / /unkick <id|@username>
-/errors — last log lines"""
+/errors — last log lines
+/version — which build is running (deployed commit)"""
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
@@ -61,6 +62,19 @@ def admin_only(func):
 @admin_only
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(ADMIN_HELP)
+
+
+@admin_only
+async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    info = version.read_deploy_info()
+    if not info:
+        await update.message.reply_text(
+            "No deploy info — probably running locally, not via update.sh."
+        )
+        return
+    await update.message.reply_text(
+        f"🏷 {version.describe(info)}\ndeployed {info.get('deployed_at', '?')}"
+    )
 
 
 @admin_only
