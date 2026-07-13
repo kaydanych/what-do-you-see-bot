@@ -189,10 +189,11 @@ def build_collage(
     gap = config.COLLAGE_GAP
     radius = config.COLLAGE_RADIUS
     row_h = _base_row_h(n)
-    # Widen the canvas for busy days so the mosaic stays roughly portrait
-    # instead of a tall sliver (aspect target ~0.8); never narrower than the
-    # configured width for small days.
-    W = max(config.COLLAGE_WIDTH, int(math.sqrt(0.7 * n) * row_h))
+    # Aim for a phone-portrait card (~3:4). The width grows with sqrt(n) so the
+    # total aspect stays roughly constant as photos pile up, rather than turning
+    # into a tall sliver; small days are floored to COLLAGE_WIDTH so a lone photo
+    # still reads at a sane width instead of a thin strip.
+    W = max(config.COLLAGE_WIDTH, int(math.sqrt(config.COLLAGE_PORTRAIT_K * n) * row_h))
     content_w = W - 2 * pad
 
     rows = _justify(images, content_w, row_h, gap)
