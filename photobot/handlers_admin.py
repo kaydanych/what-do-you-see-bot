@@ -1,4 +1,5 @@
 import functools
+import html
 import logging
 from datetime import time
 
@@ -12,10 +13,12 @@ log = logging.getLogger(__name__)
 ADMIN_HELP = """Admin commands:
 /status — today at a glance
 /users — user list
-/addprompt <en> | <ru> — add a prompt (the | and RU part are optional,
-  English is the default everyone gets); or send a .txt file, one per line
+/addprompt <en> | <ru> — append a prompt to the queue (the | and RU part are
+  optional, English is the default everyone gets)
+/prompts — queue overview (sent prompts shown struck through, next one flagged)
+Upload a .txt (one prompt per line) to REPLACE the queue in that order;
+  prompts you've already sent are kept as done and never repeat
 /setru <id> <ru text> — add/replace the Russian version of an existing prompt
-/prompts — list prompts
 /delprompt <id> — delete a prompt
 /times — show schedule
 /settimes key=HH:MM … — e.g. /settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=10
@@ -144,17 +147,31 @@ async def cmd_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     rows = db.list_prompts()
     if not rows:
         await update.message.reply_text(
-            "Library is empty. /addprompt <text> or send a .txt file."
+            "Queue is empty. /addprompt <text> or upload a .txt (one per line)."
         )
         return
-    lines = []
+    used = sum(1 for r in rows if r["used_on"])
+    lines = [f"<b>Prompt queue</b> — {used} sent · {len(rows) - used} left"]
+    next_flagged = False
     for r in rows:
-        used = f" (used {r['used_on']})" if r["used_on"] else ""
-        ru = f"\n   RU: {r['text_ru']}" if r["text_ru"] else ""
-        lines.append(f"#{r['id']}: {r['text']}{used}{ru}")
-    text = "\n".join(lines)
-    for chunk_start in range(0, len(text), 3800):
-        await update.message.reply_text(text[chunk_start : chunk_start + 3800])
+        label = html.escape(r["text"])
+        flag = " 🇷🇺" if r["text_ru"] else ""
+        if r["used_on"]:
+            lines.append(f"<s>#{r['id']} {label}</s>{flag}")
+        elif not next_flagged:
+            lines.append(f"▶️ <b>#{r['id']} {label}</b>{flag} ← next")
+            next_flagged = True
+        else:
+            lines.append(f"#{r['id']} {label}{flag}")
+
+    buf = ""
+    for ln in lines:
+        if buf and len(buf) + len(ln) + 1 > 3800:
+            await update.message.reply_text(buf, parse_mode="HTML")
+            buf = ""
+        buf += ("\n" if buf else "") + ln
+    if buf:
+        await update.message.reply_text(buf, parse_mode="HTML")
 
 
 @admin_only
@@ -173,18 +190,21 @@ async def import_prompts_file(update: Update, context: ContextTypes.DEFAULT_TYPE
     doc = update.message.document
     tg_file = await doc.get_file()
     data = bytes(await tg_file.download_as_bytearray())
-    lines = [ln.strip() for ln in data.decode("utf-8", errors="replace").splitlines()]
-    added = bilingual = 0
-    for ln in lines:
-        if ln:
-            en, ru = parse_prompt_line(ln)
-            db.add_prompt(en, update.effective_user.id, text_ru=ru)
-            added += 1
-            bilingual += 1 if ru else 0
-    await update.message.reply_text(
-        f"Imported {added} prompts ({bilingual} bilingual). "
-        f"Unused prompts: {db.count_unused_prompts()}"
-    )
+    parsed = [
+        parse_prompt_line(ln)
+        for ln in data.decode("utf-8", errors="replace").splitlines()
+        if ln.strip()
+    ]
+    if not parsed:
+        await update.message.reply_text("That file had no prompt lines — queue unchanged.")
+        return
+    queued, kept = db.replace_prompt_queue(parsed, update.effective_user.id)
+    bilingual = sum(1 for _, ru in parsed if ru)
+    note = f"Queue replaced: {queued} prompts ({bilingual} bilingual) in file order."
+    if kept:
+        note += f"\n{kept} already-sent prompt(s) kept as history (won't repeat)."
+    note += f"\nUnused now: {db.count_unused_prompts()}."
+    await update.message.reply_text(note)
 
 
 @admin_only

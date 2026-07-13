@@ -1,4 +1,3 @@
-import random
 import sqlite3
 import threading
 from datetime import datetime
@@ -196,16 +195,42 @@ def count_unused_prompts() -> int:
     ).fetchone()["n"]
 
 
-def pick_prompt() -> tuple[sqlite3.Row | None, bool]:
-    """Random unused prompt; if all are used, recycle the oldest-used one.
-    Returns (prompt, recycled)."""
-    unused = _exec("SELECT * FROM prompts WHERE used_on IS NULL").fetchall()
-    if unused:
-        return random.choice(unused), False
-    recycled = _exec(
-        "SELECT * FROM prompts ORDER BY used_on LIMIT 1"
+def pick_prompt() -> sqlite3.Row | None:
+    """Next unused prompt in queue (list) order, or None if the queue is
+    exhausted. Sequential: lowest id among the not-yet-used prompts."""
+    return _exec(
+        "SELECT * FROM prompts WHERE used_on IS NULL ORDER BY id LIMIT 1"
     ).fetchone()
-    return recycled, recycled is not None
+
+
+def replace_prompt_queue(
+    parsed: list[tuple[str, str | None]], added_by: int
+) -> tuple[int, int]:
+    """Make `parsed` (ordered (en, ru) lines) the new prompt queue: drop the
+    current unused queue and insert these in order, but keep every already-used
+    prompt as history (matched by text, so it is never re-queued). Returns
+    (queued, kept_used)."""
+    assert _conn is not None, "db.init() was not called"
+    now = _now()
+    with _lock, _conn:
+        used = {
+            r["text"].strip().casefold()
+            for r in _conn.execute(
+                "SELECT text FROM prompts WHERE used_on IS NOT NULL"
+            )
+        }
+        _conn.execute("DELETE FROM prompts WHERE used_on IS NULL")
+        queued = 0
+        for en, ru in parsed:
+            if en.strip().casefold() in used:
+                continue  # already used — keep it struck, don't re-queue
+            _conn.execute(
+                "INSERT INTO prompts(text, text_ru, source, added_by, added_at) "
+                "VALUES(?, ?, 'upload', ?, ?)",
+                (en.strip(), ru.strip() if ru else None, added_by, now),
+            )
+            queued += 1
+    return queued, len(used)
 
 
 def mark_prompt_used(prompt_id: int, date: str) -> None:

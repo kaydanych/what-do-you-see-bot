@@ -114,13 +114,13 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
-    prompt, recycled = db.pick_prompt()
+    prompt = db.pick_prompt()
     if prompt is None:
         db.set_day_field(date, "skipped", 1)
         await notify_admins(
             context,
-            "⚠️ Prompt library is EMPTY — today is skipped. Add prompts with "
-            "/addprompt or send me a .txt file (one prompt per line).",
+            "⚠️ Prompt queue is empty — today is skipped. Add prompts with "
+            "/addprompt or upload a fresh .txt file (one prompt per line).",
         )
         return
 
@@ -139,8 +139,8 @@ async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
 
     unused = db.count_unused_prompts()
     note = f"📤 Prompt sent to {sent} users (failed: {failed}).\n«{prompt['text']}»"
-    if recycled:
-        note += "\n♻️ Library exhausted — this prompt was RECYCLED."
+    if unused == 0:
+        note += "\n⚠️ That was the LAST prompt in the queue — upload more before tomorrow."
     elif unused < LOW_LIBRARY_THRESHOLD:
         note += f"\n⚠️ Only {unused} unused prompts left — time to add more."
     await notify_admins(context, note)
