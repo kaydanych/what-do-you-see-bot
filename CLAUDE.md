@@ -19,5 +19,9 @@ Full design in `DESIGN.md`, ops/setup in `README.md`.
   needed.
 - User-facing strings are bilingual RU|EN in `strings.py`; prompts use the
   `EN | RU` pipe format (English first, matching `parse_prompt_line`).
-- Currently runs locally; Synology NAS deploy (docker-compose) is planned but
-  not done yet.
+- Runs on the Synology NAS (Container Manager project at
+  `/volume1/docker/photobot`). Deploys are automatic: a Task Scheduler job
+  runs `update.sh` every 5 min — it pulls from GitHub, then restarts the
+  container (code-only change) or rebuilds (dependency change). So
+  **deploy = commit + push to main**. Never edit files on the NAS directly;
+  `update.sh` does `git reset --hard`.

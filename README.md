@@ -93,17 +93,56 @@ Web UI only (QuickConnect), no SSH needed:
    unless-stopped` brings it back after reboots; it re-checks the day's state
    every minute, so a missed step self-heals.
 
-### Updating on the NAS
+### Updating on the NAS (automatic via git pull)
 
-Code is bind-mounted from the host (`./photobot`), so how you deploy depends
-on what changed:
+The NAS deploys itself: a Task Scheduler job runs `update.sh` every few
+minutes, which fetches from GitHub and — only when there are new commits —
+resets the working tree and restarts the container (code-only change) or
+rebuilds it (`requirements.txt` / `Dockerfile` / compose change). So the whole
+deploy flow from anywhere is just **`git push`**, then wait one polling
+interval. `.env` and `data/` are gitignored, so git never touches them.
 
-- **Python-only change** (e.g. `collage.py`, `strings.py`): overwrite the file
-  in File Station, then Container Manager → Project → **Restart**. No rebuild.
-- **`requirements.txt` / dependency change**: needs a full rebuild. Because
-  Container Manager's Build **reuses cached layers** (a plain Build/Restart can
-  keep running stale code), force a clean one: Stop → Action → Clean → **Image
-  tab → delete `photobot-photobot:latest`** → Build.
+**One-time setup** (all in the DSM web UI, no SSH):
+
+1. Package Center → install **Git Server** (we only need the `git` binary it
+   ships; don't enable/configure the server itself).
+2. Control Panel → Task Scheduler → Create → **Scheduled Task → User-defined
+   script**. User: `root`. Schedule: doesn't matter (run manually once).
+   Script — turns the existing folder into a git checkout:
+
+   ```sh
+   cd /volume1/docker/photobot
+   git init
+   git remote add origin https://github.com/kaydanych/what-do-you-see-bot.git
+   git fetch origin main
+   git reset --hard origin/main
+   git branch -M main
+   git branch --set-upstream-to=origin/main main
+   ```
+
+   Run it once (select task → Run), check `git status` works via a follow-up
+   run if unsure, then delete this task.
+3. Create the recurring task: **Scheduled Task → User-defined script**, user
+   `root`, schedule **every 5 minutes**, script:
+
+   ```sh
+   /bin/sh /volume1/docker/photobot/update.sh
+   ```
+
+   In the task's Settings tab, enable *Send run details by email → only when
+   the script terminates abnormally* to get notified of failed deploys.
+
+Deploy activity is logged to `/volume1/docker/photobot/deploy.log` (visible in
+File Station); up-to-date polls log nothing.
+
+**Don't edit files on the NAS anymore** — `update.sh` does `git reset --hard`,
+so any manual edits under `/volume1/docker/photobot` (except `.env` and
+`data/`) are overwritten on the next deploy. The repo on GitHub is the single
+source of truth.
+
+If a rebuild ever serves stale code (Container Manager's UI Build reuses
+cached layers), force a clean one: Stop → Action → Clean → **Image tab →
+delete `photobot-photobot:latest`** → Build.
 
 Verify what's actually running via Container → `photobot` → Terminal, e.g.
 `python -c "from photobot import collage; print(collage._grid(4))"`.
