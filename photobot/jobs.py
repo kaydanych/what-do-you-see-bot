@@ -1,4 +1,5 @@
 import logging
+from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
@@ -35,12 +36,23 @@ def get_times() -> dict:
         "prompt": parse_hhmm(db.get_setting("prompt_time")),
         "reminder": parse_hhmm(db.get_setting("reminder_time")),
         "deadline": parse_hhmm(db.get_setting("deadline_time")),
+        "final": int(db.get_setting("final_reminder_min")),
         "delay": int(db.get_setting("collage_delay_min")),
     }
 
 
 def day_dir(date: str) -> Path:
     return config.PHOTOS_DIR / date
+
+
+def day_number(date: str) -> int | None:
+    """Running day counter for the collage kicker: day 1 is
+    project_start_date. Returns None if unset or the date precedes it."""
+    start = db.get_setting("project_start_date")
+    if not start:
+        return None
+    n = (date_cls.fromisoformat(date) - date_cls.fromisoformat(start)).days + 1
+    return n if n >= 1 else None
 
 
 async def notify_admins(context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
@@ -101,6 +113,12 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
         and t["reminder"] <= nowt < t["deadline"]
     ):
         await send_reminders(context, today)
+
+    final_at = datetime.combine(
+        now.date(), t["deadline"], tzinfo=config.TZ
+    ) - timedelta(minutes=t["final"])
+    if not day["final_reminder_sent_at"] and final_at <= now and nowt < t["deadline"]:
+        await send_final_reminders(context, today)
 
     if not day["moderation_sent_at"] and nowt >= t["deadline"]:
         await send_moderation(context, today)
@@ -164,6 +182,33 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
             db.get_user_lang(uid),
             "REMINDER",
             deadline=deadline,
+            text=prompt_text(prompt, db.get_user_lang(uid)),
+        ),
+    )
+
+
+async def send_final_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
+    """Last-call nudge a few minutes before the deadline, to everyone who still
+    hasn't submitted."""
+    db.set_day_field(
+        date, "final_reminder_sent_at", now_local().isoformat(timespec="seconds")
+    )
+    day = db.get_day(date)
+    prompt = db.get_prompt(day["prompt_id"]) if day["prompt_id"] else None
+    if prompt is None:
+        return
+    submitted = set(db.submitter_ids(date))
+    targets = [u for u in db.active_user_ids() if u not in submitted]
+    if not targets:
+        return
+    minutes = int(db.get_setting("final_reminder_min"))
+    await send_per_user(
+        context,
+        targets,
+        lambda uid: t(
+            db.get_user_lang(uid),
+            "FINAL_REMINDER",
+            minutes=minutes,
             text=prompt_text(prompt, db.get_user_lang(uid)),
         ),
     )
@@ -233,13 +278,20 @@ async def send_collage(
 
     # Same mosaic in every language, only the header/footer text differs.
     seed = hash(date) & 0x7FFFFFFF
+    daynum = day_number(date)
 
     def collage_path(lang: str) -> Path:
         stem = "collage_preview" if preview_to else "collage"
         out = day_dir(date) / f"{stem}_{lang}.jpg"
         prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
         collage.build_collage(
-            paths, out, prompt=prompt_text, on_date=date, lang=lang, seed=seed
+            paths,
+            out,
+            prompt=prompt_text,
+            on_date=date,
+            day_number=daynum,
+            lang=lang,
+            seed=seed,
         )
         return out
 

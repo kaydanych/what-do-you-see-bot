@@ -134,6 +134,16 @@ def _fmt_date(on_date, lang: str) -> str:
     return f"{on_date.day} {months[on_date.month - 1]} {on_date.year}"
 
 
+def _fmt_kicker(on_date, day_number, lang: str) -> str:
+    """Date kicker, optionally with a running day counter:
+    '12 July 2026 · Day 2' / '12 июля 2026 · День 2'."""
+    kicker = _fmt_date(on_date, lang)
+    if day_number is not None:
+        word = "День" if lang == "ru" else "Day"
+        kicker += f" · {word} {day_number}"
+    return kicker
+
+
 def _participants(n: int, lang: str) -> str:
     """Localised participant count for the footer."""
     if lang == "ru":
@@ -163,6 +173,7 @@ def build_collage(
     *,
     prompt: str | None = None,
     on_date=None,
+    day_number: int | None = None,
     lang: str = "en",
     seed: int | None = None,
 ) -> Path:
@@ -205,7 +216,8 @@ def build_collage(
 
     header_lines: list[tuple[str, object, str]] = []  # (text, font, colour)
     if on_date is not None:
-        header_lines.append((_fmt_date(on_date, lang), f_date, config.COLLAGE_DIM))
+        kicker = _fmt_kicker(on_date, day_number, lang)
+        header_lines.append((kicker, f_date, config.COLLAGE_DIM))
     if prompt:
         # Locale-aware quotes: guillemets for Russian, curly for everyone else.
         lq, rq = ("«", "»") if lang == "ru" else ("“", "”")

@@ -65,7 +65,10 @@ def init(path: Path | str | None = None) -> None:
         migrations = {
             "users": [("lang", "TEXT")],
             "photos": [("excluded", "INTEGER NOT NULL DEFAULT 0")],
-            "days": [("moderation_sent_at", "TEXT")],
+            "days": [
+                ("moderation_sent_at", "TEXT"),
+                ("final_reminder_sent_at", "TEXT"),
+            ],
         }
         for table, columns in migrations.items():
             existing = {
@@ -258,6 +261,7 @@ def create_day(date: str, prompt_id: int) -> None:
 def set_day_field(date: str, field: str, value) -> None:
     assert field in {
         "reminder_sent_at",
+        "final_reminder_sent_at",
         "moderation_sent_at",
         "collage_sent_at",
         "skipped",
