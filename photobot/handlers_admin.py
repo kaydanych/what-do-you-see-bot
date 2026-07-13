@@ -6,7 +6,7 @@ from datetime import time
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from . import config, db, jobs
+from . import config, db, jobs, version
 
 log = logging.getLogger(__name__)
 
@@ -21,7 +21,8 @@ Upload a .txt (one prompt per line) to REPLACE the queue in that order;
 /setru <id> <ru text> — add/replace the Russian version of an existing prompt
 /delprompt <id> — delete a prompt
 /times — show schedule
-/settimes key=HH:MM … — e.g. /settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=10
+/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=10
+  (final = last-call reminder that many minutes before the deadline)
 /forceprompt — send today's prompt now
 Moderation (at the deadline you get a numbered contact sheet):
 /exclude N — drop photo N from today's collage
@@ -32,7 +33,8 @@ Moderation (at the deadline you get a numbered contact sheet):
 /skipday — cancel today
 /broadcast <text> — message all active users
 /kick <id|@username> / /unkick <id|@username>
-/errors — last log lines"""
+/errors — last log lines
+/version — which build is running (deployed commit)"""
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
@@ -60,6 +62,19 @@ def admin_only(func):
 @admin_only
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(ADMIN_HELP)
+
+
+@admin_only
+async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    info = version.read_deploy_info()
+    if not info:
+        await update.message.reply_text(
+            "No deploy info — probably running locally, not via update.sh."
+        )
+        return
+    await update.message.reply_text(
+        f"🏷 {version.describe(info)}\ndeployed {info.get('deployed_at', '?')}"
+    )
 
 
 @admin_only
@@ -212,9 +227,10 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         f"prompt = {db.get_setting('prompt_time')}\n"
         f"reminder = {db.get_setting('reminder_time')}\n"
+        f"final = {db.get_setting('final_reminder_min')} min before deadline\n"
         f"deadline = {db.get_setting('deadline_time')}\n"
         f"delay = {db.get_setting('collage_delay_min')} min after deadline\n\n"
-        "Change: /settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=5\n"
+        "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=5\n"
         "(any subset; applies within a minute, no restart needed)"
     )
 
@@ -222,6 +238,7 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 KEY_MAP = {
     "prompt": "prompt_time",
     "reminder": "reminder_time",
+    "final": "final_reminder_min",
     "deadline": "deadline_time",
     "delay": "collage_delay_min",
 }
@@ -231,7 +248,7 @@ KEY_MAP = {
 async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Usage: /settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=5"
+            "Usage: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=5"
         )
         return
     new = {k: db.get_setting(v) for k, v in KEY_MAP.items()}
@@ -240,9 +257,9 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             key, _, val = arg.partition("=")
             if key not in KEY_MAP or not val:
                 raise ValueError(f"unknown argument «{arg}»")
-            if key == "delay":
+            if key in ("final", "delay"):
                 if not (0 <= int(val) <= 60):
-                    raise ValueError("delay must be 0–60 minutes")
+                    raise ValueError(f"{key} must be 0–60 minutes")
             else:
                 jobs.parse_hhmm(val)  # validates format
             new[key] = val
@@ -251,6 +268,11 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             raise ValueError("required order: prompt < reminder < deadline")
         if d > time(23, 50):
             raise ValueError("deadline must be 23:50 or earlier (collage runs after it)")
+        final_minute = d.hour * 60 + d.minute - int(new["final"])
+        if final_minute <= r.hour * 60 + r.minute:
+            raise ValueError(
+                "final reminder (deadline − final min) must fall after the reminder time"
+            )
     except ValueError as e:
         await update.message.reply_text(f"Not saved: {e}")
         return
@@ -258,7 +280,8 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         db.set_setting(KEY_MAP[key], val)
     await update.message.reply_text(
         f"Saved ✅ prompt {new['prompt']}, reminder {new['reminder']}, "
-        f"deadline {new['deadline']}, collage +{new['delay']} min."
+        f"final −{new['final']} min, deadline {new['deadline']}, "
+        f"collage +{new['delay']} min."
     )
 
 

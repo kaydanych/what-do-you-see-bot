@@ -24,7 +24,8 @@ STRINGS = {
             "присылаю задание — например, «пришли фото с водой». До {deadline} ты "
             "отправляешь мне своё фото, понимая задание так, как тебе близко, а "
             "вечером все, кто участвовал, получают общий коллаж дня. Ближе к "
-            "вечеру я пришлю одно напоминание. Хочешь заменить фото? Просто "
+            "вечеру я мягко напомню, и ещё раз — незадолго до дедлайна. Хочешь "
+            "заменить фото? Просто "
             "пришли новое — оно заменит старое.\n\n"
             "Команды: /start — перезапустить, /today — задание дня, /lang — язык, "
             "/stop — отписаться.\n\n"
@@ -46,6 +47,10 @@ STRINGS = {
         "TEXT_NUDGE": "Словами не отделаешься — жду фото 😉",
         "REMINDER": (
             "⏰ Напоминание: дедлайн в {deadline}, а твоего фото ещё нет!\n\n"
+            "Задание на сегодня:\n{text}"
+        ),
+        "FINAL_REMINDER": (
+            "🚨 Последний звонок: до дедлайна {minutes} мин, а твоего фото ещё нет!\n\n"
             "Задание на сегодня:\n{text}"
         ),
         "COLLAGE_CAPTION": "🖼 Коллаж дня — участников: {n}. До завтра!",
@@ -83,7 +88,8 @@ STRINGS = {
             "send a challenge — e.g. “send me a photo with water”. You send me "
             "your photo before {deadline}, following the challenge however it "
             "makes sense to you, and in the evening everyone who took part gets "
-            "the collage of the day. I'll send one reminder towards the evening. "
+            "the collage of the day. I'll nudge you once in the evening, and once "
+            "more just before the deadline. "
             "Want to swap your photo? Just send a new one and it replaces the old.\n\n"
             "Commands: /start — restart, /today — today's challenge, /lang — language, "
             "/stop — unsubscribe.\n\n"
@@ -107,6 +113,10 @@ STRINGS = {
         "REMINDER": (
             "⏰ Reminder: the deadline is {deadline} and I don't have your photo yet!\n\n"
             "Today's challenge:\n{text}"
+        ),
+        "FINAL_REMINDER": (
+            "🚨 Last call: {minutes} min to the deadline and I still don't have "
+            "your photo!\n\nToday's challenge:\n{text}"
         ),
         "COLLAGE_CAPTION": "🖼 Collage of the day — {n} participants. See you tomorrow!",
         "COLLAGE_CAPTION_SOLO": (
