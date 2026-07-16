@@ -33,6 +33,12 @@ Moderation (at the deadline you get a numbered contact sheet):
 /skipday — cancel today
 /broadcast <text> — message all active users
 /kick <id|@username> / /unkick <id|@username>
+Community:
+/stats — participation leaderboard + collage ratings
+/suggestions — pending user prompt ideas
+/approve <id> [en | ru] — queue a suggestion (edited text optional; the
+  suggester gets credited on the day it's used)
+/dismiss <id> — discard a suggestion
 /errors — last log lines
 /version — which build is running (deployed commit)"""
 
@@ -102,6 +108,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             "Collage: sent ✅" if day["collage_sent_at"]
             else f"Collage: pending ({t['deadline_time']} + {t['collage_delay_min']} min)"
         )
+        ratings = jobs.rating_summary(today)
+        if ratings:
+            lines.append(f"Ratings: {ratings}")
     active = len(db.active_user_ids())
     lines.append(f"Active users: {active}")
     lines.append(f"Unused prompts: {db.count_unused_prompts()}")
@@ -438,6 +447,99 @@ async def cmd_unkick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(
         f"Restored {row['first_name']} (id {row['tg_id']})."
     )
+
+
+@admin_only
+async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dates = db.collage_dates()
+    participation = db.participation()
+    if not dates or not participation:
+        await update.message.reply_text("No collage days yet — stats start tomorrow.")
+        return
+    collage_days = set(dates)
+    board = []
+    for tg_id, user_dates in participation.items():
+        n = len(user_dates & collage_days)
+        if n == 0:
+            continue
+        streak = 0
+        for d in reversed(dates):
+            if d not in user_dates:
+                break
+            streak += 1
+        u = db.get_user(tg_id)
+        name = u["first_name"] if u else str(tg_id)
+        uname = f" @{u['username']}" if u and u["username"] else ""
+        board.append((n, streak, f"{name}{uname}"))
+    board.sort(key=lambda x: (-x[0], -x[1], x[2].lower()))
+    lines = [f"📊 Participation — {len(dates)} collage day(s):"]
+    for i, (n, streak, who) in enumerate(board, 1):
+        line = f"{i}. {who} — {n}/{len(dates)}"
+        if streak >= 2:
+            line += f", streak {streak}🔥"
+        lines.append(line)
+    totals = db.rating_counts_total()
+    if totals:
+        parts = [f"{e} {totals[v]}" for v, e in jobs.RATING_OPTIONS if totals.get(v)]
+        lines.append(f"\nCollage ratings so far: {' · '.join(parts)}")
+    await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_suggestions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    rows = db.pending_suggestions()
+    if not rows:
+        await update.message.reply_text("No pending suggestions.")
+        return
+    lines = ["💡 Pending suggestions (/approve <id> [en | ru], /dismiss <id>):"]
+    for r in rows:
+        u = db.get_user(r["tg_id"])
+        name = u["first_name"] if u else str(r["tg_id"])
+        lines.append(f"#{r['id']} {name}: «{r['text']}»")
+    await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        sid = int(context.args[0])
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /approve <id> [en text | ru text]")
+        return
+    s = db.get_suggestion(sid)
+    if s is None:
+        await update.message.reply_text(f"No suggestion #{sid}.")
+        return
+    if s["status"] != "pending":
+        await update.message.reply_text(f"Suggestion #{sid} is already {s['status']}.")
+        return
+    raw = " ".join(context.args[1:]).strip() or s["text"]
+    en, ru = parse_prompt_line(raw)
+    # added_by = the suggester, so the daily prompt can credit them
+    pid = db.add_prompt(en, s["tg_id"], text_ru=ru, source="suggestion")
+    db.set_suggestion_status(sid, "approved")
+    u = db.get_user(s["tg_id"])
+    name = u["first_name"] if u else f"id {s['tg_id']}"
+    note = "" if ru else "\n(no RU version — everyone gets this text as-is)"
+    await update.message.reply_text(
+        f"Queued #{pid} «{en}» — credit goes to {name}. "
+        f"Unused prompts: {db.count_unused_prompts()}{note}"
+    )
+
+
+@admin_only
+async def cmd_dismiss(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        sid = int(context.args[0])
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /dismiss <id>")
+        return
+    s = db.get_suggestion(sid)
+    if s is None or s["status"] != "pending":
+        await update.message.reply_text(f"No pending suggestion #{sid}.")
+        return
+    db.set_suggestion_status(sid, "dismissed")
+    await update.message.reply_text(f"Dismissed #{sid}.")
 
 
 @admin_only

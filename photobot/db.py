@@ -44,6 +44,32 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS ratings (
+    date     TEXT NOT NULL,
+    tg_id    INTEGER NOT NULL,
+    value    TEXT NOT NULL,               -- fire | like | meh
+    rated_at TEXT,
+    PRIMARY KEY (date, tg_id)
+);
+CREATE TABLE IF NOT EXISTS collage_messages (
+    date       TEXT NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (date, tg_id)
+);
+CREATE TABLE IF NOT EXISTS feedback (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    tg_id      INTEGER NOT NULL,
+    text       TEXT NOT NULL,
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS suggestions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    tg_id      INTEGER NOT NULL,
+    text       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | dismissed
+    created_at TEXT
+);
 """
 
 
@@ -312,3 +338,104 @@ def set_photo_excluded(date: str, tg_id: int, excluded: bool) -> None:
 
 def submitter_ids(date: str) -> list[int]:
     return [r["tg_id"] for r in photos_for(date)]
+
+
+# --- ratings ----------------------------------------------------------------
+
+def set_rating(date: str, tg_id: int, value: str) -> bool:
+    """Store/replace a user's collage rating. Returns False if it was already
+    this value (so callers can skip re-editing keyboards)."""
+    row = _exec(
+        "SELECT value FROM ratings WHERE date=? AND tg_id=?", (date, tg_id)
+    ).fetchone()
+    if row and row["value"] == value:
+        return False
+    _exec(
+        "INSERT INTO ratings(date, tg_id, value, rated_at) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(date, tg_id) DO UPDATE SET value=excluded.value, "
+        "rated_at=excluded.rated_at",
+        (date, tg_id, value, _now()),
+    )
+    return True
+
+
+def rating_counts(date: str) -> dict[str, int]:
+    rows = _exec(
+        "SELECT value, COUNT(*) AS n FROM ratings WHERE date=? GROUP BY value",
+        (date,),
+    ).fetchall()
+    return {r["value"]: r["n"] for r in rows}
+
+
+def rating_counts_total() -> dict[str, int]:
+    rows = _exec(
+        "SELECT value, COUNT(*) AS n FROM ratings GROUP BY value"
+    ).fetchall()
+    return {r["value"]: r["n"] for r in rows}
+
+
+def add_collage_message(date: str, tg_id: int, message_id: int) -> None:
+    _exec(
+        "INSERT INTO collage_messages(date, tg_id, message_id) VALUES(?, ?, ?) "
+        "ON CONFLICT(date, tg_id) DO UPDATE SET message_id=excluded.message_id",
+        (date, tg_id, message_id),
+    )
+
+
+def collage_messages_for(date: str) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM collage_messages WHERE date=?", (date,)
+    ).fetchall()
+
+
+# --- feedback & suggestions ---------------------------------------------------
+
+def add_feedback(tg_id: int, text: str) -> int:
+    cur = _exec(
+        "INSERT INTO feedback(tg_id, text, created_at) VALUES(?, ?, ?)",
+        (tg_id, text.strip(), _now()),
+    )
+    return cur.lastrowid
+
+
+def add_suggestion(tg_id: int, text: str) -> int:
+    cur = _exec(
+        "INSERT INTO suggestions(tg_id, text, created_at) VALUES(?, ?, ?)",
+        (tg_id, text.strip(), _now()),
+    )
+    return cur.lastrowid
+
+
+def get_suggestion(sid: int) -> sqlite3.Row | None:
+    return _exec("SELECT * FROM suggestions WHERE id=?", (sid,)).fetchone()
+
+
+def set_suggestion_status(sid: int, status: str) -> bool:
+    cur = _exec("UPDATE suggestions SET status=? WHERE id=?", (status, sid))
+    return cur.rowcount > 0
+
+
+def pending_suggestions() -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM suggestions WHERE status='pending' ORDER BY id"
+    ).fetchall()
+
+
+# --- participation stats ------------------------------------------------------
+
+def collage_dates() -> list[str]:
+    """Dates whose collage actually went out, ascending."""
+    rows = _exec(
+        "SELECT date FROM days WHERE collage_sent_at IS NOT NULL "
+        "AND skipped=0 ORDER BY date"
+    ).fetchall()
+    return [r["date"] for r in rows]
+
+
+def participation() -> dict[int, set[str]]:
+    """tg_id -> set of dates with a non-excluded submission."""
+    rows = _exec("SELECT date, tg_id FROM photos WHERE excluded=0").fetchall()
+    out: dict[int, set[str]] = {}
+    for r in rows:
+        out.setdefault(r["tg_id"], set()).add(r["date"])
+    return out

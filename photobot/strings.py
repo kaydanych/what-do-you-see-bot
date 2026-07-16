@@ -27,10 +27,11 @@ STRINGS = {
             "вечеру я мягко напомню, и ещё раз — незадолго до дедлайна. Хочешь "
             "заменить фото? Просто "
             "пришли новое — оно заменит старое.\n\n"
-            "Команды: /start — перезапустить, /today — задание дня, /lang — язык, "
-            "/stop — отписаться.\n\n"
-            "Разработка всё ещё в процессе — буду рад обратной связи через "
-            "@kaydanych. Вперед замечать!"
+            "Команды: /start — перезапустить, /today — задание дня, "
+            "/feedback — обратная связь, /suggest_prompt — предложить задание, "
+            "/lang — язык, /stop — отписаться.\n\n"
+            "Разработка всё ещё в процессе — буду рад любой обратной связи: "
+            "просто напиши /feedback и пару слов. Вперед замечать!"
         ),
         "PROMPT": "📸 Задание на сегодня:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Сегодняшнее задание ещё в силе — лови:",
@@ -59,6 +60,22 @@ STRINGS = {
         ),
         "TODAY_SUBMITTED": "\n\nТвоё фото уже у меня ✅ (можешь прислать другое — заменю)",
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
+        "PROMPT_CREDIT": "\n\n💡 Сегодняшнее задание предложил(а) {name}",
+        "RATE_THANKS": "Спасибо за оценку! {emoji}",
+        "FEEDBACK_USAGE": (
+            "Напиши свой отзыв прямо в команде:\n"
+            "/feedback <твоё сообщение>\n\nЯ передам его организатору."
+        ),
+        "FEEDBACK_THANKS": "Спасибо! Передал организатору 🙏",
+        "SUGGEST_USAGE": (
+            "Предложи идею задания прямо в команде:\n"
+            "/suggest_prompt <твоя идея>\n\n"
+            "Если она станет заданием дня — все узнают, что это твоя 💡"
+        ),
+        "SUGGEST_THANKS": (
+            "Отличная идея, спасибо! Передал организатору — если она станет "
+            "заданием дня, укажу твоё авторство 💡"
+        ),
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
         "HELP": (
@@ -66,12 +83,14 @@ STRINGS = {
             "• каждое утро в {prompt_time} приходит задание\n"
             "• до {deadline} присылаешь одно фото (новое заменяет старое)\n"
             "• после {deadline} все участники дня получают общий коллаж\n"
+            "• кнопки 🔥/👍/😐 под коллажем — оцени день, счёт видят все\n"
             "• все времена — по Берлину (CET/CEST)\n\n"
             "/today — задание дня и статус твоего фото\n"
+            "/feedback <текст> — обратная связь организатору\n"
+            "/suggest_prompt <идея> — предложить задание дня\n"
             "/lang — сменить язык\n"
             "/stop — отписаться\n\n"
-            "Идеи и обратная связь: @kaydanych или pull request на GitHub —\n"
-            "github.com/kaydanych/what-do-you-see-bot"
+            "Код живёт на GitHub — github.com/kaydanych/what-do-you-see-bot"
         ),
     },
     "en": {
@@ -91,10 +110,11 @@ STRINGS = {
             "the collage of the day. I'll nudge you once in the evening, and once "
             "more just before the deadline. "
             "Want to swap your photo? Just send a new one and it replaces the old.\n\n"
-            "Commands: /start — restart, /today — today's challenge, /lang — language, "
-            "/stop — unsubscribe.\n\n"
-            "Still very much a work in progress — I'd love your feedback via "
-            "@kaydanych. Enjoy noticing!"
+            "Commands: /start — restart, /today — today's challenge, "
+            "/feedback — share feedback, /suggest_prompt — suggest a challenge, "
+            "/lang — language, /stop — unsubscribe.\n\n"
+            "Still very much a work in progress — I'd love your feedback: just "
+            "send /feedback with a few words. Enjoy noticing!"
         ),
         "PROMPT": "📸 Today's challenge:\n\n{text}",
         "PROMPT_TODAY_ACTIVE": "Today's challenge is still on — here it is:",
@@ -125,6 +145,22 @@ STRINGS = {
         ),
         "TODAY_SUBMITTED": "\n\nYour photo is in ✅ (send another one to replace it)",
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
+        "PROMPT_CREDIT": "\n\n💡 Today's challenge was suggested by {name}",
+        "RATE_THANKS": "Thanks for rating! {emoji}",
+        "FEEDBACK_USAGE": (
+            "Write your feedback right in the command:\n"
+            "/feedback <your message>\n\nI'll pass it on to the organizer."
+        ),
+        "FEEDBACK_THANKS": "Thank you! Passed it on to the organizer 🙏",
+        "SUGGEST_USAGE": (
+            "Suggest a challenge idea right in the command:\n"
+            "/suggest_prompt <your idea>\n\n"
+            "If it becomes the challenge of the day, everyone will know it's yours 💡"
+        ),
+        "SUGGEST_THANKS": (
+            "Great idea, thanks! Passed it to the organizer — if it becomes the "
+            "challenge of the day, you'll get the credit 💡"
+        ),
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
         "HELP": (
@@ -132,12 +168,15 @@ STRINGS = {
             "• every morning at {prompt_time} a challenge arrives\n"
             "• you send one photo before {deadline} (a new one replaces the old)\n"
             "• after {deadline} everyone who took part gets the collage\n"
+            "• tap 🔥/👍/😐 under the collage to rate the day — tallies are "
+            "visible to everyone\n"
             "• all times are Berlin time (CET/CEST)\n\n"
             "/today — today's challenge and your photo status\n"
+            "/feedback <text> — send feedback to the organizer\n"
+            "/suggest_prompt <idea> — suggest a challenge of the day\n"
             "/lang — change language\n"
             "/stop — unsubscribe\n\n"
-            "Ideas & feedback: @kaydanych or a pull request on GitHub —\n"
-            "github.com/kaydanych/what-do-you-see-bot"
+            "The code lives on GitHub — github.com/kaydanych/what-do-you-see-bot"
         ),
     },
 }

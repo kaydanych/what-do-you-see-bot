@@ -137,12 +137,76 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     prompt = db.get_prompt(day["prompt_id"])
     text = t(lang, "PROMPT", text=jobs.prompt_text(prompt, lang))
+    text += jobs.prompt_credit(prompt, lang)
     today = jobs.now_local().date().isoformat()
     if update.effective_user.id in db.submitter_ids(today):
         text += t(lang, "TODAY_SUBMITTED")
     else:
         text += t(lang, "TODAY_NOT_SUBMITTED", deadline=_times()["deadline"])
     await update.message.reply_text(text)
+
+
+async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _register(update, context):
+        return
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text(t(lang, "FEEDBACK_USAGE"))
+        return
+    db.add_feedback(u.id, text)
+    await jobs.notify_admins(
+        context,
+        f"💬 Feedback from {u.first_name} @{u.username or '—'} (id {u.id}):\n{text}",
+    )
+    await update.message.reply_text(t(lang, "FEEDBACK_THANKS"))
+
+
+async def cmd_suggest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await _register(update, context):
+        return
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    text = " ".join(context.args).strip()
+    if not text:
+        await update.message.reply_text(t(lang, "SUGGEST_USAGE"))
+        return
+    sid = db.add_suggestion(u.id, text)
+    await jobs.notify_admins(
+        context,
+        f"💡 Suggestion #{sid} from {u.first_name} @{u.username or '—'}:\n«{text}»\n\n"
+        f"/approve {sid} <en> | <ru> — queue an edited version,\n"
+        f"/approve {sid} — queue as-is, /dismiss {sid} — discard.",
+    )
+    await update.message.reply_text(t(lang, "SUGGEST_THANKS"))
+
+
+async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Collage rating tap: store the vote, refresh tallies on every copy."""
+    query = update.callback_query
+    _, date, value = query.data.split(":", 2)
+    if value not in jobs.RATING_EMOJI:
+        await query.answer()
+        return
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    changed = db.set_rating(date, u.id, value)
+    await query.answer(t(lang, "RATE_THANKS", emoji=jobs.RATING_EMOJI[value]))
+    if not changed:
+        return
+    keyboard = jobs.rating_keyboard(date)
+    for row in db.collage_messages_for(date):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                reply_markup=keyboard,
+            )
+        except Exception:
+            log.debug(
+                "rating keyboard update failed for %s/%s", row["tg_id"], date
+            )
 
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

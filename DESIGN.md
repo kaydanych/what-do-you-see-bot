@@ -218,7 +218,30 @@ days    (date PK, prompt_id FK, prompt_sent_at, collage_sent_at,
          skipped INT DEFAULT 0)
 photos  (date FK, tg_id FK, file_path, submitted_at,
          PRIMARY KEY (date, tg_id))                          -- resubmit = UPSERT
+ratings (date, tg_id, value TEXT, rated_at,                  -- fire|like|meh
+         PRIMARY KEY (date, tg_id))                          -- revote = UPSERT
+collage_messages (date, tg_id, message_id,                   -- per-user copy of the
+         PRIMARY KEY (date, tg_id))                          -- collage, for live tallies
+feedback    (id PK, tg_id, text, created_at)
+suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```
+
+## 12a. Community features
+
+- **Collage ratings** — every collage goes out with an inline 🔥/👍/😐 row.
+  A tap stores/updates the user's vote for that date and the bot edits the
+  keyboard on *every* stored copy (`collage_messages`), so tallies are shared
+  and live. Emoji-only labels keep one keyboard valid for both languages.
+- **/feedback <text>** — stored in `feedback` and forwarded to the admins.
+  Mentioned in the welcome and /help texts only; the bot never nags for it.
+- **/suggest_prompt <idea>** — stored in `suggestions`, admins get a DM with
+  `/approve <id> [en | ru]` / `/dismiss <id>` (plus `/suggestions` to list
+  pending). Approving inserts a prompt with `source='suggestion'` and
+  `added_by=<suggester>`; on the day it is sent (and in /today) users see
+  "💡 Today's challenge was suggested by <name>".
+- **/stats (admin-only for now)** — participation leaderboard derived from
+  `photos` × collage days: N/total per user, current streak, plus overall
+  rating tallies.
 
 ## 13. Edge cases covered
 
@@ -236,7 +259,7 @@ photos  (date FK, tg_id FK, file_path, submitted_at,
 
 - AI-generated prompts (library-only, low-count warnings instead)
 - Web dashboard (admin chat commands instead)
-- Reactions/voting on collages, streaks, stats for users
+- Public (user-facing) stats — /stats exists but is admin-only for now (§12a)
 - Multiple photos per user in the collage
 
 ## 15. Open questions for Nikita

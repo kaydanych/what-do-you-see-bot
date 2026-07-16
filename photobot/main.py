@@ -102,7 +102,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("help", usr.cmd_help))
     app.add_handler(CommandHandler("today", usr.cmd_today))
     app.add_handler(CommandHandler("lang", usr.cmd_lang))
+    app.add_handler(CommandHandler("feedback", usr.cmd_feedback))
+    app.add_handler(CommandHandler("suggest_prompt", usr.cmd_suggest))
     app.add_handler(CallbackQueryHandler(usr.on_lang_choice, pattern=r"^lang:"))
+    app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
@@ -124,6 +127,10 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
     app.add_handler(CommandHandler("kick", adm.cmd_kick))
     app.add_handler(CommandHandler("unkick", adm.cmd_unkick))
+    app.add_handler(CommandHandler("stats", adm.cmd_stats))
+    app.add_handler(CommandHandler("suggestions", adm.cmd_suggestions))
+    app.add_handler(CommandHandler("approve", adm.cmd_approve))
+    app.add_handler(CommandHandler("dismiss", adm.cmd_dismiss))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))
     app.add_handler(CommandHandler("version", adm.cmd_version))
 

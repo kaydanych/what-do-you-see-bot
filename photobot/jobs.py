@@ -3,6 +3,7 @@ from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from pathlib import Path
 
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
@@ -13,12 +14,44 @@ log = logging.getLogger(__name__)
 
 LOW_LIBRARY_THRESHOLD = 7
 
+# Collage rating buttons: (stored value, emoji). Emoji-only labels, so one
+# keyboard works for every language; tallies show up in the button text.
+RATING_OPTIONS = [("fire", "🔥"), ("like", "👍"), ("meh", "😐")]
+RATING_EMOJI = dict(RATING_OPTIONS)
+
+
+def rating_keyboard(date: str) -> InlineKeyboardMarkup:
+    counts = db.rating_counts(date)
+    row = []
+    for value, emoji in RATING_OPTIONS:
+        n = counts.get(value, 0)
+        label = f"{emoji} {n}" if n else emoji
+        row.append(InlineKeyboardButton(label, callback_data=f"rate:{date}:{value}"))
+    return InlineKeyboardMarkup([row])
+
+
+def rating_summary(date: str) -> str | None:
+    """'🔥 5 · 👍 2' or None if nobody rated yet."""
+    counts = db.rating_counts(date)
+    parts = [f"{e} {counts[v]}" for v, e in RATING_OPTIONS if counts.get(v)]
+    return " · ".join(parts) if parts else None
+
 
 def prompt_text(prompt, lang: str | None) -> str:
     """Prompt in the user's language; English text is the primary/fallback."""
     if lang == "ru" and prompt["text_ru"]:
         return prompt["text_ru"]
     return prompt["text"]
+
+
+def prompt_credit(prompt, lang: str | None) -> str:
+    """Credit line for user-suggested prompts, '' for library ones."""
+    if prompt["source"] != "suggestion" or not prompt["added_by"]:
+        return ""
+    u = db.get_user(prompt["added_by"])
+    if u is None:
+        return ""
+    return t(lang, "PROMPT_CREDIT", name=u["first_name"])
 
 
 def now_local() -> datetime:
@@ -152,11 +185,16 @@ async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
             db.get_user_lang(uid),
             "PROMPT",
             text=prompt_text(prompt, db.get_user_lang(uid)),
-        ),
+        )
+        + prompt_credit(prompt, db.get_user_lang(uid)),
     )
 
     unused = db.count_unused_prompts()
     note = f"📤 Prompt sent to {sent} users (failed: {failed}).\n«{prompt['text']}»"
+    if prompt["source"] == "suggestion":
+        su = db.get_user(prompt["added_by"]) if prompt["added_by"] else None
+        if su:
+            note += f"\n💡 Suggested by {su['first_name']} — users see the credit."
     if unused == 0:
         note += "\n⚠️ That was the LAST prompt in the queue — upload more before tomorrow."
     elif unused < LOW_LIBRARY_THRESHOLD:
@@ -314,6 +352,7 @@ async def send_collage(
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
     # Build each needed collage once, then reuse Telegram's file_id per language.
+    keyboard = rating_keyboard(date)
     file_ids: dict[str, str] = {}
     sent = 0
     for uid in recipients:
@@ -321,12 +360,16 @@ async def send_collage(
         try:
             if lang not in file_ids:
                 with open(collage_path(lang), "rb") as f:
-                    msg = await context.bot.send_photo(uid, f, caption=caption_for(uid))
+                    msg = await context.bot.send_photo(
+                        uid, f, caption=caption_for(uid), reply_markup=keyboard
+                    )
                 file_ids[lang] = msg.photo[-1].file_id
             else:
-                await context.bot.send_photo(
-                    uid, file_ids[lang], caption=caption_for(uid)
+                msg = await context.bot.send_photo(
+                    uid, file_ids[lang], caption=caption_for(uid), reply_markup=keyboard
                 )
+            # remembered so every copy's tallies can be updated on each vote
+            db.add_collage_message(date, uid, msg.message_id)
             sent += 1
         except Forbidden:
             db.set_user_status(uid, "inactive")
