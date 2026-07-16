@@ -404,7 +404,10 @@ async def cmd_skipday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 @admin_only
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    text = " ".join(context.args).strip()
+    # split off just the "/broadcast" token so line breaks in the rest of the
+    # message survive (context.args + " ".join would collapse them)
+    parts = (update.message.text or "").split(None, 1)
+    text = parts[1].strip() if len(parts) > 1 else ""
     if not text:
         await update.message.reply_text("Usage: /broadcast <text>")
         return
