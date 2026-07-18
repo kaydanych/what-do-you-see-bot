@@ -94,6 +94,7 @@ def init(path: Path | str | None = None) -> None:
             "days": [
                 ("moderation_sent_at", "TEXT"),
                 ("final_reminder_sent_at", "TEXT"),
+                ("collage_nudges", "INTEGER NOT NULL DEFAULT 0"),
             ],
         }
         for table, columns in migrations.items():
@@ -290,6 +291,7 @@ def set_day_field(date: str, field: str, value) -> None:
         "final_reminder_sent_at",
         "moderation_sent_at",
         "collage_sent_at",
+        "collage_nudges",
         "skipped",
     }
     ensure_day(date)
@@ -386,6 +388,14 @@ def collage_messages_for(date: str) -> list[sqlite3.Row]:
     return _exec(
         "SELECT * FROM collage_messages WHERE date=?", (date,)
     ).fetchall()
+
+
+def delete_collage_messages(date: str) -> None:
+    _exec("DELETE FROM collage_messages WHERE date=?", (date,))
+
+
+def delete_ratings(date: str) -> None:
+    _exec("DELETE FROM ratings WHERE date=?", (date,))
 
 
 # --- feedback & suggestions ---------------------------------------------------

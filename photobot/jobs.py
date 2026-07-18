@@ -70,7 +70,6 @@ def get_times() -> dict:
         "reminder": parse_hhmm(db.get_setting("reminder_time")),
         "deadline": parse_hhmm(db.get_setting("deadline_time")),
         "final": int(db.get_setting("final_reminder_min")),
-        "delay": int(db.get_setting("collage_delay_min")),
     }
 
 
@@ -153,15 +152,49 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     if not day["final_reminder_sent_at"] and final_at <= now and nowt < t["deadline"]:
         await send_final_reminders(context, today)
 
+    # The collage is never sent automatically: after the moderation message
+    # it waits for an admin to review and run /forcecollage.
     if not day["moderation_sent_at"] and nowt >= t["deadline"]:
         await send_moderation(context, today)
+        # if the sheet itself went out late (reboot catch-up), skip the nudge
+        # marks that already passed — it just arrived, no need to pile on
+        db.set_day_field(today, "collage_nudges", nudges_passed(now, t["deadline"]))
         day = db.get_day(today)
 
-    collage_at = datetime.combine(
-        now.date(), t["deadline"], tzinfo=config.TZ
-    ) + timedelta(minutes=t["delay"])
-    if not day["collage_sent_at"] and now >= collage_at:
-        await send_collage(context, today)
+    if day["moderation_sent_at"] and not day["collage_sent_at"]:
+        await nudge_admins(context, today, now, t["deadline"], day)
+
+
+NUDGE_MINUTES = (10, 30, 60)
+
+
+def nudges_passed(now: datetime, deadline: time) -> int:
+    """How many NUDGE_MINUTES marks lie behind us."""
+    deadline_dt = datetime.combine(now.date(), deadline, tzinfo=config.TZ)
+    minutes_over = (now - deadline_dt).total_seconds() / 60
+    return sum(1 for m in NUDGE_MINUTES if minutes_over >= m)
+
+
+async def nudge_admins(
+    context: ContextTypes.DEFAULT_TYPE, date: str, now: datetime, deadline: time, day
+) -> None:
+    """Remind the admins that the collage still needs /forcecollage, at
+    NUDGE_MINUTES past the deadline. collage_nudges counts marks already
+    covered, so each tick sends at most one nudge and a reboot mid-window
+    doesn't repeat the earlier ones."""
+    deadline_dt = datetime.combine(now.date(), deadline, tzinfo=config.TZ)
+    minutes_over = (now - deadline_dt).total_seconds() / 60
+    passed = nudges_passed(now, deadline)
+    if passed <= (day["collage_nudges"] or 0):
+        return
+    db.set_day_field(date, "collage_nudges", passed)
+    n = len(db.photos_for(date))
+    await notify_admins(
+        context,
+        f"⏰ {int(minutes_over)} min past the deadline — the collage "
+        f"({n} photo(s)) is still waiting for your review.\n"
+        "/preview to check it, /forcecollage to send.",
+    )
 
 
 async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
@@ -260,6 +293,10 @@ async def send_moderation(context: ContextTypes.DEFAULT_TYPE, date: str) -> None
     )
     photos = db.photos_for(date, include_excluded=True)
     if not photos:
+        # nothing to review or send — close the day so it doesn't stay pending
+        db.set_day_field(
+            date, "collage_sent_at", now_local().isoformat(timespec="seconds")
+        )
         await notify_admins(context, f"📭 {date}: deadline passed, no submissions.")
         return
 
@@ -272,11 +309,11 @@ async def send_moderation(context: ContextTypes.DEFAULT_TYPE, date: str) -> None
         name = u["first_name"] if u else "?"
         uname = f" @{u['username']}" if u and u["username"] else ""
         lines.append(f"{i} — {name}{uname} (id {p['tg_id']})")
-    delay = db.get_setting("collage_delay_min")
     text = (
-        f"🔍 Moderation for {date} — collage goes out in {delay} min.\n"
+        f"🔍 Moderation for {date} — the collage waits for your review.\n"
         "/exclude N — drop a photo, /ban N — drop + kick the user,\n"
-        "/include N — undo, /forcecollage — send now.\n\n" + "\n".join(lines)
+        "/include N — undo, /preview — dry-run to you only,\n"
+        "/forcecollage — send the collage to everyone.\n\n" + "\n".join(lines)
     )
     for admin_id in config.ADMIN_IDS:
         try:

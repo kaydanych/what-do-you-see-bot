@@ -46,8 +46,8 @@ prompt; the cycle repeats.
 | 09:00–21:00 | Users submit photos. One photo per user per day; **re-sending replaces** the previous one (message: «Заменил твоё фото на новое»). |
 | 19:00 | Gentle reminder — only to users who haven't submitted yet. Skipped if the user already submitted. |
 | 21:00 | Deadline. Late photos get a polite rejection and are not stored. **Admin gets a numbered contact sheet** (every photo once, submission order) + a number→name list for moderation. |
-| 21:00–21:10 | Moderation window: `/exclude N` drops a photo, `/ban N` drops it and kicks the author, `/include N` undoes. Numbers never shift. Excluded users don't receive the collage. |
-| 21:10 | Collage is generated from the remaining photos and sent **only to today's submitters**. Admin also receives it regardless. |
+| after 21:00 | Review: `/exclude N` drops a photo, `/ban N` drops it and kicks the author, `/include N` undoes, `/preview` dry-runs. Numbers never shift. Excluded users don't receive the collage. |
+| admin's call | The collage is **never sent automatically** — the admin reviews and runs `/forcecollage` (reminder nudges to the admin 10/30/60 min after the deadline while unsent). It is then generated from the remaining photos and sent **only to that day's submitters** (admin always included). `/delcollage [date]` deletes a sent collage from every chat (≤48 h, Telegram limit) and resets the day for a re-send. |
 
 Implementation: a single tick job runs every minute and compares the clock
 against the DB-stored times and the day's state — this is what makes runtime
@@ -55,8 +55,8 @@ reconfiguration and reboot catch-up free.
 
 **Catch-up on restart:** on startup the bot checks the `days` table — if
 today's prompt wasn't sent yet and it's between 09:00 and 22:00, it sends it;
-if the deadline passed but no collage was made, it makes it. NAS reboots and
-DSM updates therefore can't silently kill a day.
+if the deadline passed but no moderation sheet went out, it sends it. NAS
+reboots and DSM updates therefore can't silently kill a day.
 
 **Zero/one submissions:** 0 photos → no collage, admin gets a note. 1 photo →
 that user gets their own photo back as a 2×2 mini-collage with a friendly note
@@ -154,7 +154,8 @@ happens in the bot chat:
 | `/addprompt`, `/prompts`, `/delprompt` | Library management (see §6) |
 | `/times`, `/settimes` | Show / change the daily schedule (stored in DB, applies within a minute) |
 | `/forceprompt` | Send today's prompt now (if the 09:00 job misfired) |
-| `/forcecollage` | Build & send the collage now (early close or missed job) |
+| `/forcecollage [date]` | Build & send the collage after review (this is the ONLY way it goes out) |
+| `/delcollage [date]` | Delete a sent collage from every chat (≤48 h) and reset the day |
 | `/preview` | Build the collage and send it **only to admin** — dry run |
 | `/skipday` | Cancel today (no collage, no reminder) |
 | `/broadcast <text>` | Message all active users |
@@ -180,7 +181,7 @@ DATA_DIR=/data
 
 ```
 # admin chat, any time:
-/settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=5
+/settimes prompt=09:00 reminder=19:00 deadline=21:00
 ```
 
 ## 11. Deployment on Synology

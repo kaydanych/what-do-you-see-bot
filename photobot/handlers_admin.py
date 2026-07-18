@@ -1,6 +1,7 @@
 import functools
 import html
 import logging
+from datetime import date as date_cls
 from datetime import time
 
 from telegram import Update
@@ -21,15 +22,19 @@ Upload a .txt (one prompt per line) to REPLACE the queue in that order;
 /setru <id> <ru text> — add/replace the Russian version of an existing prompt
 /delprompt <id> — delete a prompt
 /times — show schedule
-/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=10
+/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00
   (final = last-call reminder that many minutes before the deadline)
 /forceprompt — send today's prompt now
-Moderation (at the deadline you get a numbered contact sheet):
+Moderation (at the deadline you get a numbered contact sheet; the collage
+  is NEVER sent automatically — it waits for your review, with nudges
+  10/30/60 min after the deadline while unsent):
 /exclude N — drop photo N from today's collage
 /include N — undo an exclusion
 /ban N — drop photo N and kick its author
-/forcecollage — build & send collage now
 /preview — collage dry-run, sent only to you
+/forcecollage [YYYY-MM-DD] — send the reviewed collage to everyone (default today)
+/delcollage [YYYY-MM-DD] — delete a sent collage from every chat (Telegram
+  allows this only within 48 h) and reset the day for a re-send
 /skipday — cancel today
 /broadcast <text> — message all active users
 /kick <id|@username> / /unkick <id|@username>
@@ -104,10 +109,12 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         excluded = len(db.photos_for(today, include_excluded=True)) - len(subs)
         if excluded:
             lines.append(f"Excluded by moderation: {excluded}")
-        lines.append(
-            "Collage: sent ✅" if day["collage_sent_at"]
-            else f"Collage: pending ({t['deadline_time']} + {t['collage_delay_min']} min)"
-        )
+        if day["collage_sent_at"]:
+            lines.append("Collage: sent ✅")
+        elif day["moderation_sent_at"]:
+            lines.append("Collage: awaiting your review — /forcecollage to send")
+        else:
+            lines.append(f"Collage: after deadline {t['deadline_time']} + your review")
         ratings = jobs.rating_summary(today)
         if ratings:
             lines.append(f"Ratings: {ratings}")
@@ -237,10 +244,10 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"prompt = {db.get_setting('prompt_time')}\n"
         f"reminder = {db.get_setting('reminder_time')}\n"
         f"final = {db.get_setting('final_reminder_min')} min before deadline\n"
-        f"deadline = {db.get_setting('deadline_time')}\n"
-        f"delay = {db.get_setting('collage_delay_min')} min after deadline\n\n"
-        "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=5\n"
-        "(any subset; applies within a minute, no restart needed)"
+        f"deadline = {db.get_setting('deadline_time')}\n\n"
+        "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00\n"
+        "(any subset; applies within a minute, no restart needed)\n"
+        "Collage: sent manually after your review — /forcecollage."
     )
 
 
@@ -249,7 +256,6 @@ KEY_MAP = {
     "reminder": "reminder_time",
     "final": "final_reminder_min",
     "deadline": "deadline_time",
-    "delay": "collage_delay_min",
 }
 
 
@@ -257,7 +263,7 @@ KEY_MAP = {
 async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Usage: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 delay=5"
+            "Usage: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00"
         )
         return
     new = {k: db.get_setting(v) for k, v in KEY_MAP.items()}
@@ -266,7 +272,7 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             key, _, val = arg.partition("=")
             if key not in KEY_MAP or not val:
                 raise ValueError(f"unknown argument «{arg}»")
-            if key in ("final", "delay"):
+            if key == "final":
                 if not (0 <= int(val) <= 60):
                     raise ValueError(f"{key} must be 0–60 minutes")
             else:
@@ -276,7 +282,9 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         if not (p < r < d):
             raise ValueError("required order: prompt < reminder < deadline")
         if d > time(23, 50):
-            raise ValueError("deadline must be 23:50 or earlier (collage runs after it)")
+            raise ValueError(
+                "deadline must be 23:50 or earlier (moderation runs after it)"
+            )
         final_minute = d.hour * 60 + d.minute - int(new["final"])
         if final_minute <= r.hour * 60 + r.minute:
             raise ValueError(
@@ -289,8 +297,7 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         db.set_setting(KEY_MAP[key], val)
     await update.message.reply_text(
         f"Saved ✅ prompt {new['prompt']}, reminder {new['reminder']}, "
-        f"final −{new['final']} min, deadline {new['deadline']}, "
-        f"collage +{new['delay']} min."
+        f"final −{new['final']} min, deadline {new['deadline']}."
     )
 
 
@@ -371,15 +378,24 @@ async def cmd_forceprompt(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 @admin_only
 async def cmd_forcecollage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    today = jobs.now_local().date().isoformat()
-    day = db.get_day(today)
+    date = context.args[0] if context.args else jobs.now_local().date().isoformat()
+    try:
+        date_cls.fromisoformat(date)
+    except ValueError:
+        await update.message.reply_text(
+            "Usage: /forcecollage [YYYY-MM-DD] (default: today)"
+        )
+        return
+    day = db.get_day(date)
     if day is None or not day["prompt_sent_at"]:
-        await update.message.reply_text("No prompt was sent today — nothing to collect.")
+        await update.message.reply_text(
+            f"No prompt was sent on {date} — nothing to collect."
+        )
         return
     if day["collage_sent_at"]:
-        await update.message.reply_text("Collage was already sent today.")
+        await update.message.reply_text(f"Collage for {date} was already sent.")
         return
-    result = await jobs.send_collage(context, today)
+    result = await jobs.send_collage(context, date)
     await update.message.reply_text(f"Done: {result}")
 
 
@@ -391,6 +407,48 @@ async def cmd_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     )
     if result == "no submissions":
         await update.message.reply_text("No submissions yet — nothing to preview.")
+
+
+@admin_only
+async def cmd_delcollage(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Delete a sent collage from every recipient's chat (Telegram only allows
+    a bot to delete its own messages within 48 h), then reset the day so the
+    moderation commands and /forcecollage work again."""
+    date = context.args[0] if context.args else jobs.now_local().date().isoformat()
+    try:
+        date_cls.fromisoformat(date)
+    except ValueError:
+        await update.message.reply_text("Usage: /delcollage [YYYY-MM-DD] (default: today)")
+        return
+    day = db.get_day(date)
+    if day is None or not day["collage_sent_at"]:
+        await update.message.reply_text(f"No sent collage recorded for {date}.")
+        return
+    msgs = db.collage_messages_for(date)
+    deleted = failed = 0
+    for m in msgs:
+        try:
+            await context.bot.delete_message(m["tg_id"], m["message_id"])
+            deleted += 1
+        except Exception:
+            log.exception(
+                "delete collage message for %s (%s) failed", m["tg_id"], date
+            )
+            failed += 1
+    db.delete_collage_messages(date)
+    db.delete_ratings(date)
+    db.set_day_field(date, "collage_sent_at", None)
+    lines = [f"🗑 {date}: deleted the collage in {deleted} chat(s)."]
+    if failed:
+        lines.append(
+            f"⚠️ {failed} could not be deleted — older than Telegram's 48 h "
+            "limit or the chat is gone; those copies stay visible."
+        )
+    lines.append(
+        f"Ratings cleared, day reset — fix things, then /forcecollage {date} "
+        "to re-send."
+    )
+    await update.message.reply_text("\n".join(lines))
 
 
 @admin_only

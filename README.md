@@ -16,8 +16,8 @@ at an ordinary day.
 
 - 🗓 **One prompt a day** from a curated bilingual library, sent to everyone at once
 - 📷 **One photo per person** — a new one replaces your old one, right up to the deadline
-- 🖼 **Automatic collage** at the end of the day, shared only with that day's participants
-- 🧹 **Admin moderation window** — drop a photo or ban a sender before the collage goes out
+- 🖼 **Daily collage** at the end of the day, shared only with that day's participants
+- 🧹 **Admin review required** — the collage goes out only after the admin moderates and sends it
 - 🇷🇺🇬🇧 **Per-user language**, prompts sent verbatim in `RU | EN` format
 - 🏠 **Self-hosted & private** — long polling, so no open ports; photos never leave your machine
 
@@ -32,8 +32,8 @@ with `/settimes`, no restart needed.
 | 09:00–21:00 | Users submit photos — one each, a new one replaces the old |
 | **19:00** | Gentle reminder, only to those who haven't submitted yet |
 | **21:00** | Deadline. Late photos are politely rejected. Admin gets a numbered contact sheet for moderation |
-| 21:00–21:10 | Moderation window: `/exclude N`, `/ban N`, `/include N` |
-| **21:10** | Collage is built and sent to everyone who took part |
+| after 21:00 | Admin reviews: `/exclude N`, `/ban N`, `/include N`, `/preview` |
+| admin's call | `/forcecollage` builds the collage and sends it to everyone who took part — it never goes out without review |
 
 The bot self-heals: a tick job every minute compares the clock to the day's
 state, so runtime schedule changes and NAS reboots can't silently kill a day.
@@ -62,18 +62,20 @@ Tests: `.venv/bin/pip install pytest && .venv/bin/python -m pytest tests/`
 
 ## Schedule
 
-Defaults: prompt **09:00**, reminder **19:00**, deadline **21:00**, collage
-**21:10** (deadline + 10 min = the moderation window), Europe/Berlin. All of it
-is stored in the DB and changed from the admin chat — no restart, applies
-within a minute:
+Defaults: prompt **09:00**, reminder **19:00**, deadline **21:00**,
+Europe/Berlin. All of it is stored in the DB and changed from the admin chat —
+no restart, applies within a minute:
 
 ```
-/settimes prompt=09:00 reminder=19:00 deadline=21:00 delay=10
+/settimes prompt=09:00 reminder=19:00 deadline=21:00
 ```
 
 At the deadline the admin receives a numbered contact sheet of all
-submissions; during the delay window `/exclude N` / `/ban N` remove photos
-before the collage goes out. Prompts can be bilingual:
+submissions. The collage is never sent automatically: review with
+`/exclude N` / `/ban N` / `/preview`, then `/forcecollage` sends it (the
+admin gets reminder nudges 10/30/60 min after the deadline while unsent).
+`/delcollage` removes a sent collage from every chat (within Telegram's 48 h
+limit) and resets the day for a re-send. Prompts can be bilingual:
 `/addprompt Пришли фото с водой | Send a photo with water`.
 
 ## Deploy on the Synology NAS

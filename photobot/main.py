@@ -122,6 +122,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("ban", adm.cmd_ban))
     app.add_handler(CommandHandler("forceprompt", adm.cmd_forceprompt))
     app.add_handler(CommandHandler("forcecollage", adm.cmd_forcecollage))
+    app.add_handler(CommandHandler("delcollage", adm.cmd_delcollage))
     app.add_handler(CommandHandler("preview", adm.cmd_preview))
     app.add_handler(CommandHandler("skipday", adm.cmd_skipday))
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
