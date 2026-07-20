@@ -64,6 +64,12 @@ def parse_hhmm(s: str) -> time:
     return t
 
 
+def deadline_label(lang: str | None) -> str:
+    """Deadline clock time tagged with its timezone, e.g. '21:00 (Berlin time)',
+    so users aren't left guessing which zone the time is in."""
+    return f"{db.get_setting('deadline_time')} ({t(lang, 'TZ_SUFFIX')})"
+
+
 def get_times() -> dict:
     return {
         "prompt": parse_hhmm(db.get_setting("prompt_time")),
@@ -278,14 +284,13 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
     targets = [u for u in db.active_user_ids() if u not in submitted]
     if not targets:
         return
-    deadline = db.get_setting("deadline_time")
     await send_per_user(
         context,
         targets,
         lambda uid: t(
             db.get_user_lang(uid),
             "REMINDER",
-            deadline=deadline,
+            deadline=deadline_label(db.get_user_lang(uid)),
             text=prompt_text(prompt, db.get_user_lang(uid)),
         ),
     )

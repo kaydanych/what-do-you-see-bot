@@ -96,6 +96,10 @@ def build_app() -> Application:
         .build()
     )
 
+    # Any command cancels a pending /feedback or /suggest_prompt text capture.
+    # Group -1 runs before the command handlers below, without consuming them.
+    app.add_handler(MessageHandler(filters.COMMAND, usr.clear_awaiting), group=-1)
+
     # user commands
     app.add_handler(CommandHandler("start", usr.cmd_start))
     app.add_handler(CommandHandler("stop", usr.cmd_stop))

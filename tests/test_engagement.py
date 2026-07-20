@@ -49,6 +49,14 @@ def test_feedback_stored():
     assert fid2 == 2
 
 
+def test_deadline_label_tags_timezone():
+    db.set_setting("deadline_time", "21:00")
+    assert jobs.deadline_label("en") == "21:00 (Berlin time)"
+    assert jobs.deadline_label("ru") == "21:00 (по Берлину)"
+    # unknown/None language falls back to the default (English) label
+    assert jobs.deadline_label(None) == "21:00 (Berlin time)"
+
+
 def test_list_feedback_all_ordered():
     assert db.list_feedback() == []
     db.add_feedback(1, "first")

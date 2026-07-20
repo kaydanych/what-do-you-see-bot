@@ -62,15 +62,14 @@ STRINGS = {
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
         "PROMPT_CREDIT": "\n\n💡 Сегодняшнее задание предложил(а) {name}",
         "RATE_THANKS": "Спасибо за оценку! {emoji}",
-        "FEEDBACK_USAGE": (
-            "Напиши свой отзыв прямо в команде:\n"
-            "/feedback <твоё сообщение>\n\nЯ передам его организатору."
+        "TZ_SUFFIX": "по Берлину",
+        "FEEDBACK_ASK": (
+            "Напиши свой отзыв следующим сообщением — я передам его организатору 🙏"
         ),
         "FEEDBACK_THANKS": "Спасибо! Передал организатору 🙏",
-        "SUGGEST_USAGE": (
-            "Предложи идею задания прямо в команде:\n"
-            "/suggest_prompt <твоя идея>\n\n"
-            "Если она станет заданием дня — все узнают, что это твоя 💡"
+        "SUGGEST_ASK": (
+            "Напиши свою идею для задания следующим сообщением. Если она станет "
+            "заданием дня — все узнают, что это твоя 💡"
         ),
         "SUGGEST_THANKS": (
             "Отличная идея, спасибо! Передал организатору — если она станет "
@@ -147,15 +146,14 @@ STRINGS = {
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
         "PROMPT_CREDIT": "\n\n💡 Today's challenge was suggested by {name}",
         "RATE_THANKS": "Thanks for rating! {emoji}",
-        "FEEDBACK_USAGE": (
-            "Write your feedback right in the command:\n"
-            "/feedback <your message>\n\nI'll pass it on to the organizer."
+        "TZ_SUFFIX": "Berlin time",
+        "FEEDBACK_ASK": (
+            "Send your feedback as your next message — I'll pass it on to the organizer 🙏"
         ),
         "FEEDBACK_THANKS": "Thank you! Passed it on to the organizer 🙏",
-        "SUGGEST_USAGE": (
-            "Suggest a challenge idea right in the command:\n"
-            "/suggest_prompt <your idea>\n\n"
-            "If it becomes the challenge of the day, everyone will know it's yours 💡"
+        "SUGGEST_ASK": (
+            "Send your challenge idea as your next message. If it becomes the "
+            "challenge of the day, everyone will know it's yours 💡"
         ),
         "SUGGEST_THANKS": (
             "Great idea, thanks! Passed it to the organizer — if it becomes the "
