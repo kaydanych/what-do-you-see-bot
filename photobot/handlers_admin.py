@@ -11,43 +11,49 @@ from . import config, db, jobs, version
 
 log = logging.getLogger(__name__)
 
-ADMIN_HELP = """Admin commands:
+ADMIN_HELP = """Admin commands
+
+📊 Overview
+/broadcast <text> — message all active users
+/errors — last log lines
+/stats — participation leaderboard + collage ratings
 /status — today at a glance
 /users — user list
-/addprompt <en> | <ru> — append a prompt to the queue (the | and RU part are
-  optional, English is the default everyone gets)
-/prompts — queue overview (sent prompts shown struck through, next one flagged)
-Upload a .txt (one prompt per line) to REPLACE the queue in that order;
-  prompts you've already sent are kept as done and never repeat
-/setru <id> <ru text> — add/replace the Russian version of an existing prompt
+/version — which build is running (deployed commit)
+
+📝 Prompts (the queue)
+/addprompt <en> | <ru> — append a prompt (| and RU optional; EN is what everyone gets)
 /delprompt <id> — delete a prompt
-/times — show schedule
-/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10
-  (final = last-call reminder that many minutes before the deadline;
-   preview = evening heads-up to you of what tomorrow's prompt will be)
-/forceprompt — send today's prompt now
-Moderation (at the deadline you get a numbered contact sheet; the collage
-  is NEVER sent automatically — it waits for your review, with nudges
-  10/30/60 min after the deadline while unsent):
-/exclude N — drop photo N from today's collage
-/include N — undo an exclusion
-/ban N — drop photo N and kick its author
-/preview — collage dry-run, sent only to you
-/forcecollage [YYYY-MM-DD] — send the reviewed collage to everyone (default today)
-/delcollage [YYYY-MM-DD] — delete a sent collage from every chat (Telegram
-  allows this only within 48 h) and reset the day for a re-send
-/skipday — cancel today
-/broadcast <text> — message all active users
-/kick <id|@username> / /unkick <id|@username>
-Community:
-/stats — participation leaderboard + collage ratings
-/suggestions — pending user prompt ideas
-/approve <id> [en | ru] — queue a suggestion (edited text optional; the
-  suggester gets credited on the day it's used)
+/prompts — queue overview (sent ones struck through, next one flagged)
+/setru <id> <ru text> — add/replace a prompt's Russian version
+• Upload a .txt (one prompt per line) to REPLACE the queue in that order;
+  already-sent prompts are kept as done and never repeat
+
+💡 Suggestions & feedback
+/approve <id> [en | ru] — queue a suggestion (edited text optional; suggester gets credited)
 /dismiss <id> — discard a suggestion
 /feedback_all — every /feedback message users have sent, in one place
-/errors — last log lines
-/version — which build is running (deployed commit)"""
+/suggestions — pending user prompt ideas
+
+🗓 Schedule & daily cycle
+/forceprompt — send today's prompt now
+/settimes key=… — e.g. prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10
+  (final = last-call reminder N min before deadline; preview = evening heads-up of tomorrow's prompt)
+/skipday — cancel today
+/times — show schedule
+
+🖼 Collage & moderation
+At the deadline you get a numbered contact sheet; the collage is NEVER sent
+automatically — it waits for your review, with nudges 10/30/60 min after the
+deadline while unsent.
+/ban N — drop photo N and kick its author
+/delcollage [YYYY-MM-DD] — delete a sent collage everywhere (Telegram allows this only within 48 h) and reset the day
+/exclude N — drop photo N from today's collage
+/forcecollage [YYYY-MM-DD] — send the reviewed collage to everyone (default today)
+/include N — undo an exclusion
+/kick <id|@username> — remove a user
+/preview — collage dry-run, sent only to you
+/unkick <id|@username> — restore a user"""
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
