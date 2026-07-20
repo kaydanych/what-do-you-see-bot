@@ -70,6 +70,15 @@ def test_day_fields():
     assert db.get_day("2026-07-04")["skipped"] == 1
 
 
+def test_preview_sent_at_field():
+    db.set_day_field("2026-07-04", "preview_sent_at", "2026-07-04T21:10:00")
+    assert db.get_day("2026-07-04")["preview_sent_at"] == "2026-07-04T21:10:00"
+
+
+def test_preview_time_default():
+    assert db.get_setting("preview_time") == "21:10"
+
+
 def test_user_lang():
     db.upsert_user(5, "Ann", "ann")
     assert db.get_user_lang(5) is None

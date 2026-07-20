@@ -95,6 +95,7 @@ def init(path: Path | str | None = None) -> None:
                 ("moderation_sent_at", "TEXT"),
                 ("final_reminder_sent_at", "TEXT"),
                 ("collage_nudges", "INTEGER NOT NULL DEFAULT 0"),
+                ("preview_sent_at", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -292,6 +293,7 @@ def set_day_field(date: str, field: str, value) -> None:
         "moderation_sent_at",
         "collage_sent_at",
         "collage_nudges",
+        "preview_sent_at",
         "skipped",
     }
     ensure_day(date)

@@ -22,8 +22,9 @@ Upload a .txt (one prompt per line) to REPLACE the queue in that order;
 /setru <id> <ru text> — add/replace the Russian version of an existing prompt
 /delprompt <id> — delete a prompt
 /times — show schedule
-/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00
-  (final = last-call reminder that many minutes before the deadline)
+/settimes key=… — e.g. /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10
+  (final = last-call reminder that many minutes before the deadline;
+   preview = evening heads-up to you of what tomorrow's prompt will be)
 /forceprompt — send today's prompt now
 Moderation (at the deadline you get a numbered contact sheet; the collage
   is NEVER sent automatically — it waits for your review, with nudges
@@ -244,8 +245,9 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"prompt = {db.get_setting('prompt_time')}\n"
         f"reminder = {db.get_setting('reminder_time')}\n"
         f"final = {db.get_setting('final_reminder_min')} min before deadline\n"
-        f"deadline = {db.get_setting('deadline_time')}\n\n"
-        "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00\n"
+        f"deadline = {db.get_setting('deadline_time')}\n"
+        f"preview = {db.get_setting('preview_time')} (admin heads-up: tomorrow's prompt)\n\n"
+        "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10\n"
         "(any subset; applies within a minute, no restart needed)\n"
         "Collage: sent manually after your review — /forcecollage."
     )
@@ -256,6 +258,7 @@ KEY_MAP = {
     "reminder": "reminder_time",
     "final": "final_reminder_min",
     "deadline": "deadline_time",
+    "preview": "preview_time",
 }
 
 
@@ -263,7 +266,8 @@ KEY_MAP = {
 async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args:
         await update.message.reply_text(
-            "Usage: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00"
+            "Usage: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 "
+            "preview=21:10"
         )
         return
     new = {k: db.get_setting(v) for k, v in KEY_MAP.items()}
@@ -285,6 +289,8 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             raise ValueError(
                 "deadline must be 23:50 or earlier (moderation runs after it)"
             )
+        if jobs.parse_hhmm(new["preview"]) < d:
+            raise ValueError("preview must be at or after the deadline")
         final_minute = d.hour * 60 + d.minute - int(new["final"])
         if final_minute <= r.hour * 60 + r.minute:
             raise ValueError(
@@ -297,7 +303,8 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         db.set_setting(KEY_MAP[key], val)
     await update.message.reply_text(
         f"Saved ✅ prompt {new['prompt']}, reminder {new['reminder']}, "
-        f"final −{new['final']} min, deadline {new['deadline']}."
+        f"final −{new['final']} min, deadline {new['deadline']}, "
+        f"preview {new['preview']}."
     )
 
 

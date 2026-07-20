@@ -69,6 +69,7 @@ def get_times() -> dict:
         "prompt": parse_hhmm(db.get_setting("prompt_time")),
         "reminder": parse_hhmm(db.get_setting("reminder_time")),
         "deadline": parse_hhmm(db.get_setting("deadline_time")),
+        "preview": parse_hhmm(db.get_setting("preview_time")),
         "final": int(db.get_setting("final_reminder_min")),
     }
 
@@ -129,6 +130,13 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     nowt = now.time()
     t = get_times()
     day = db.get_day(today)
+
+    # Admin-only heads-up (after the day's deadline) of what tomorrow's prompt
+    # will be. Fires regardless of whether today ran or was skipped, so it also
+    # confirms a queue that was refilled after an empty day.
+    if nowt >= t["preview"] and not (day and day["preview_sent_at"]):
+        await send_preview(context, today)
+        day = db.get_day(today)
 
     if day and day["skipped"]:
         return
@@ -233,6 +241,31 @@ async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
     elif unused < LOW_LIBRARY_THRESHOLD:
         note += f"\n⚠️ Only {unused} unused prompts left — time to add more."
     await notify_admins(context, note)
+
+
+async def send_preview(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
+    """Admin-only preview of the prompt queued to go out next. By preview_time
+    (evening) today's prompt is already marked used, so pick_prompt() returns
+    tomorrow's — the next unused prompt in queue order."""
+    db.set_day_field(date, "preview_sent_at", now_local().isoformat(timespec="seconds"))
+    prompt = db.pick_prompt()
+    if prompt is None:
+        await notify_admins(
+            context,
+            "🔮 Tomorrow's prompt: the queue is empty — nothing lined up. Add "
+            "prompts with /addprompt or upload a fresh .txt before 09:00.",
+        )
+        return
+    lines = ["🔮 Tomorrow's prompt (next in queue):", f"«{prompt['text']}»"]
+    if prompt["text_ru"]:
+        lines.append(f"🇷🇺 «{prompt['text_ru']}»")
+    if prompt["source"] == "suggestion" and prompt["added_by"]:
+        su = db.get_user(prompt["added_by"])
+        if su:
+            lines.append(f"💡 Suggested by {su['first_name']} — users will see the credit.")
+    unused = db.count_unused_prompts()
+    lines.append(f"📚 {unused} unused prompt(s) in the queue (this one included).")
+    await notify_admins(context, "\n".join(lines))
 
 
 async def send_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:

@@ -24,6 +24,7 @@ DEFAULT_SETTINGS = {
     "prompt_time": "09:00",
     "reminder_time": "19:00",
     "deadline_time": "21:00",
+    "preview_time": "21:10",  # admin-only heads-up: what tomorrow's prompt will be
     "final_reminder_min": "10",  # last-call reminder this many minutes before deadline
     "project_start_date": "2026-07-12",  # day 1; collage shows "Day N" counting from here
     "deployed_commit": "",  # last build announced to admins (set on startup)
