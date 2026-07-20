@@ -49,6 +49,14 @@ def test_feedback_stored():
     assert fid2 == 2
 
 
+def test_list_feedback_all_ordered():
+    assert db.list_feedback() == []
+    db.add_feedback(1, "first")
+    db.add_feedback(2, "second")
+    rows = db.list_feedback()
+    assert [r["text"] for r in rows] == ["first", "second"]
+
+
 def test_suggestion_lifecycle_and_credit():
     db.upsert_user(7, "Ann", "ann")
     sid = db.add_suggestion(7, "something red")

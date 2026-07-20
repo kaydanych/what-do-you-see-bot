@@ -130,6 +130,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("unkick", adm.cmd_unkick))
     app.add_handler(CommandHandler("stats", adm.cmd_stats))
     app.add_handler(CommandHandler("suggestions", adm.cmd_suggestions))
+    app.add_handler(CommandHandler("feedback_all", adm.cmd_feedback_all))
     app.add_handler(CommandHandler("approve", adm.cmd_approve))
     app.add_handler(CommandHandler("dismiss", adm.cmd_dismiss))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))

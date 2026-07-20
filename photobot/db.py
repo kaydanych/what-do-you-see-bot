@@ -410,6 +410,11 @@ def add_feedback(tg_id: int, text: str) -> int:
     return cur.lastrowid
 
 
+def list_feedback() -> list[sqlite3.Row]:
+    """All feedback ever submitted, oldest first."""
+    return _exec("SELECT * FROM feedback ORDER BY id").fetchall()
+
+
 def add_suggestion(tg_id: int, text: str) -> int:
     cur = _exec(
         "INSERT INTO suggestions(tg_id, text, created_at) VALUES(?, ?, ?)",

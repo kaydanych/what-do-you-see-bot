@@ -45,6 +45,7 @@ Community:
 /approve <id> [en | ru] — queue a suggestion (edited text optional; the
   suggester gets credited on the day it's used)
 /dismiss <id> — discard a suggestion
+/feedback_all — every /feedback message users have sent, in one place
 /errors — last log lines
 /version — which build is running (deployed commit)"""
 
@@ -565,6 +566,24 @@ async def cmd_suggestions(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         name = u["first_name"] if u else str(r["tg_id"])
         lines.append(f"#{r['id']} {name}: «{r['text']}»")
     await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_feedback_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    rows = db.list_feedback()
+    if not rows:
+        await update.message.reply_text("No feedback yet.")
+        return
+    lines = [f"💬 All feedback ({len(rows)}):"]
+    for r in rows:
+        u = db.get_user(r["tg_id"])
+        name = u["first_name"] if u else str(r["tg_id"])
+        uname = f" @{u['username']}" if u and u["username"] else ""
+        when = (r["created_at"] or "")[:16].replace("T", " ")
+        lines.append(f"#{r['id']} · {when} · {name}{uname} (id {r['tg_id']}):\n{r['text']}")
+    text = "\n\n".join(lines)
+    for start in range(0, len(text), 3800):
+        await update.message.reply_text(text[start : start + 3800])
 
 
 @admin_only
