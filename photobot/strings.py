@@ -38,6 +38,10 @@ STRINGS = {
         "ACCEPTED": "Фото принято ✅ Коллаж пришлю после {deadline}.",
         "REPLACED": "Понял, заменил твоё фото на новое ✅",
         "ALBUM_ONE": "Из альбома я беру только одно фото — взял первое 😉",
+        "PHOTO_FAILED": (
+            "Не смог получить твоё фото — похоже, связь с Telegram подвела 😔 "
+            "Пришли его ещё раз, пожалуйста."
+        ),
         "LATE": "Увы, приём фото на сегодня уже закрыт 😔 Жди новое задание завтра!",
         "NO_ACTIVE_DAY": (
             "Сейчас нет активного задания. Задания приходят каждое утро в {prompt_time} ⏰"
@@ -120,6 +124,10 @@ STRINGS = {
         "ACCEPTED": "Photo accepted ✅ I'll send the collage after {deadline}.",
         "REPLACED": "Got it — replaced your photo with the new one ✅",
         "ALBUM_ONE": "I only take one photo from an album — kept the first one 😉",
+        "PHOTO_FAILED": (
+            "I couldn't fetch your photo — looks like the connection to Telegram "
+            "hiccuped 😔 Please send it again."
+        ),
         "LATE": "Sorry, today's submissions are closed 😔 A new challenge comes tomorrow!",
         "NO_ACTIVE_DAY": (
             "There's no active challenge right now. Challenges arrive every morning "

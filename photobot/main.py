@@ -92,6 +92,12 @@ def build_app() -> Application:
         ApplicationBuilder()
         .token(config.BOT_TOKEN)
         .defaults(Defaults(link_preview_options=LinkPreviewOptions(is_disabled=True)))
+        # Defaults are 5s each; the NAS network hiccups, so give it more room to
+        # open the connection and pull photo bytes before giving up.
+        .connect_timeout(20.0)
+        .read_timeout(20.0)
+        .write_timeout(20.0)
+        .pool_timeout(5.0)
         .post_init(notify_deploy)
         .build()
     )

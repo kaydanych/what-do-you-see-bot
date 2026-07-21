@@ -1,7 +1,9 @@
+import asyncio
 import logging
 from collections import OrderedDict
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 from . import collage, db, jobs
@@ -247,17 +249,32 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if msg.media_group_id and _remember_album(msg.media_group_id):
         return  # rest of an album we already took a photo from
 
-    if msg.photo:
-        tg_file = await msg.photo[-1].get_file()
-    else:
-        tg_file = await msg.document.get_file()
-
     uid = update.effective_user.id
     date = jobs.now_local().date().isoformat()
     dest = jobs.day_dir(date) / f"u{uid}.jpg"
     tmp = dest.with_suffix(".tmp")
     tmp.parent.mkdir(parents=True, exist_ok=True)
-    await tg_file.download_to_drive(custom_path=tmp)
+
+    # Fetching the file from Telegram occasionally times out (flaky network on
+    # the host). Retry a few times, then tell the user to resend rather than
+    # letting the photo silently vanish.
+    media = msg.photo[-1] if msg.photo else msg.document
+    for attempt in range(3):
+        try:
+            tg_file = await media.get_file()
+            await tg_file.download_to_drive(custom_path=tmp)
+            break
+        except (TimedOut, NetworkError) as exc:
+            log.warning(
+                "photo fetch failed for %s (attempt %d/3): %s", uid, attempt + 1, exc
+            )
+            if attempt < 2:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            tmp.unlink(missing_ok=True)
+            await msg.reply_text(t(lang, "PHOTO_FAILED"))
+            return
+
     try:
         collage.save_submission(tmp, dest)
     finally:
