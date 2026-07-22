@@ -125,6 +125,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("setru", adm.cmd_setru))
     app.add_handler(CommandHandler("prompts", adm.cmd_prompts))
     app.add_handler(CommandHandler("delprompt", adm.cmd_delprompt))
+    app.add_handler(CommandHandler("exportprompts", adm.cmd_exportprompts))
     app.add_handler(CommandHandler("times", adm.cmd_times))
     app.add_handler(CommandHandler("settimes", adm.cmd_settimes))
     app.add_handler(CommandHandler("exclude", adm.cmd_exclude))

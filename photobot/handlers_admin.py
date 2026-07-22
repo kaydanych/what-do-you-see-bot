@@ -1,5 +1,6 @@
 import functools
 import html
+import io
 import logging
 from datetime import date as date_cls
 from datetime import time
@@ -24,8 +25,10 @@ ADMIN_HELP = """Admin commands
 📝 Prompts (the queue)
 /addprompt <en> | <ru> — append a prompt (| and RU optional; EN is what everyone gets)
 /delprompt <id> — delete a prompt
+/exportprompts — download the unused queue as a plain .txt (no ids) to reorder/edit
 /prompts — queue overview (sent ones struck through, next one flagged)
 /setru <id> <ru text> — add/replace a prompt's Russian version
+• Reorder the queue: /exportprompts → drag lines in any editor → re-upload the .txt
 • Upload a .txt (one prompt per line) to REPLACE the queue in that order;
   already-sent prompts are kept as done and never repeat
 
@@ -211,6 +214,32 @@ async def cmd_prompts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         buf += ("\n" if buf else "") + ln
     if buf:
         await update.message.reply_text(buf, parse_mode="HTML")
+
+
+@admin_only
+async def cmd_exportprompts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the unused queue as a plain 'EN | RU' .txt — no ids, so lines can be
+    freely reordered in an editor and re-uploaded to become the new order."""
+    rows = [r for r in db.list_prompts() if not r["used_on"]]
+    if not rows:
+        await update.message.reply_text(
+            "Queue is empty — nothing to export. /addprompt <text> or upload a .txt."
+        )
+        return
+    lines = [
+        f"{r['text']} | {r['text_ru']}" if r["text_ru"] else r["text"]
+        for r in rows
+    ]
+    buf = io.BytesIO(("\n".join(lines) + "\n").encode("utf-8"))
+    buf.name = "prompt_queue.txt"
+    await update.message.reply_document(
+        document=buf,
+        filename="prompt_queue.txt",
+        caption=(
+            f"{len(rows)} unused prompt(s), in queue order. Reorder/edit the lines, "
+            "then upload this .txt back to replace the queue in the new order."
+        ),
+    )
 
 
 @admin_only
