@@ -60,6 +60,7 @@ STRINGS = {
             "🚨 Последний звонок: до дедлайна {minutes} мин, а твоего фото ещё нет!\n\n"
             "Задание на сегодня:\n{text}"
         ),
+        "COLLAGE_CREDIT": "идея: {name}",
         "COLLAGE_CAPTION": "🖼 Коллаж дня — участников: {n}. До завтра!",
         "COLLAGE_CAPTION_SOLO": (
             "🖼 Сегодня ты участвовал(а) в одиночку — но коллаж всё равно твой! До завтра!"
@@ -150,6 +151,7 @@ STRINGS = {
             "🚨 Last call: {minutes} min to the deadline and I still don't have "
             "your photo!\n\nToday's challenge:\n{text}"
         ),
+        "COLLAGE_CREDIT": "idea by {name}",
         "COLLAGE_CAPTION": "🖼 Collage of the day — {n} participants. See you tomorrow!",
         "COLLAGE_CAPTION_SOLO": (
             "🖼 You were the only one today — but the collage is still yours! "

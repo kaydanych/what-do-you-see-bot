@@ -383,11 +383,18 @@ async def send_collage(
     n = len(photos)
 
     prompt_en = prompt_ru = None
+    credit_name = None
     day = db.get_day(date)
     if day and day["prompt_id"]:
         prompt = db.get_prompt(day["prompt_id"])
         if prompt:
             prompt_en, prompt_ru = prompt["text"], prompt["text_ru"]
+            # Credit a user-suggested prompt by name (never their id); library
+            # prompts and departed suggesters leave the collage uncredited.
+            if prompt["source"] == "suggestion" and prompt["added_by"]:
+                u = db.get_user(prompt["added_by"])
+                if u and (u["first_name"] or "").strip():
+                    credit_name = u["first_name"].strip()
 
     # Same mosaic in every language, only the header/footer text differs.
     seed = hash(date) & 0x7FFFFFFF
@@ -397,10 +404,12 @@ async def send_collage(
         stem = "collage_preview" if preview_to else "collage"
         out = day_dir(date) / f"{stem}_{lang}.jpg"
         prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
+        credit = t(lang, "COLLAGE_CREDIT", name=credit_name) if credit_name else None
         collage.build_collage(
             paths,
             out,
             prompt=prompt_text,
+            credit=credit,
             on_date=date,
             day_number=daynum,
             lang=lang,

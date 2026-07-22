@@ -172,6 +172,7 @@ def build_collage(
     out_path: Path,
     *,
     prompt: str | None = None,
+    credit: str | None = None,
     on_date=None,
     day_number: int | None = None,
     lang: str = "en",
@@ -213,6 +214,7 @@ def build_collage(
     scratch = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     f_date = _font(False, 28)
     f_prompt = _font(True, 34)
+    f_credit = _font(False, 26)
     f_foot = _font(False, 28)
 
     header_lines: list[tuple[str, object, str]] = []  # (text, font, colour)
@@ -225,6 +227,9 @@ def build_collage(
         quoted = f"{lq}{prompt.strip()}{rq}"
         for line in _wrap(scratch, quoted, f_prompt, content_w):
             header_lines.append((line, f_prompt, config.COLLAGE_FG))
+    if credit:
+        for line in _wrap(scratch, credit.strip(), f_credit, content_w):
+            header_lines.append((line, f_credit, config.COLLAGE_DIM))
 
     def line_h(font) -> int:
         asc, desc = font.getmetrics()
