@@ -39,6 +39,13 @@ ADMIN_HELP = """Admin commands
 /feedback_all — every /feedback message users have sent, in one place
 /suggestions — pending user prompt ideas
 
+📊 Polls (custom 👍/👎 questions to all active users, live shared tally)
+/poll <question> — create + send a poll (use <EN> | <RU> for both languages)
+/polls — list polls with their tallies
+/pollresults <id> — full tally + who voted
+/polledit <id> <new question> — fix the wording; rewrites every copy sent
+/pollclose <id> — end voting (tallies stay, taps stop)
+
 🗓 Schedule & daily cycle
 /forceprompt — send today's prompt now
 /settimes key=… — e.g. prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10
@@ -515,6 +522,147 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
     sent, failed = await jobs.send_to_users(context, db.active_user_ids(), text)
     await update.message.reply_text(f"Broadcast: sent {sent}, failed {failed}.")
+
+
+def _parse_poll_id(arg: str) -> int | None:
+    try:
+        return int(arg)
+    except (TypeError, ValueError):
+        return None
+
+
+@admin_only
+async def cmd_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Create and broadcast a custom 👍/👎 poll to all active users, with a live
+    shared tally. Supports the 'English | Russian' pipe format."""
+    parts = (update.message.text or "").split(None, 1)
+    body = parts[1].strip() if len(parts) > 1 else ""
+    if not body:
+        await update.message.reply_text(
+            "Usage: /poll <question>   (or  <English> | <Russian>)\n"
+            "Sends a 👍/👎 poll to all active users with a live tally.\n"
+            "Manage with /polls, /pollresults <id>, /polledit <id> …, "
+            "/pollclose <id>."
+        )
+        return
+    en, ru = parse_prompt_line(body)
+    pid = db.create_poll(en, ru, update.effective_user.id)
+    poll = db.get_poll(pid)
+    sent, failed = await jobs.send_poll(context, poll, db.active_user_ids())
+    note = (
+        f"📊 Poll #{pid} sent to {sent} user(s) (failed: {failed}).\n«{en}»"
+        + (f"\n🇷🇺 «{ru}»" if ru else "")
+        + f"\n\nTallies update live. /pollresults {pid} for details, "
+        f"/pollclose {pid} to end voting."
+    )
+    await update.message.reply_text(note)
+
+
+@admin_only
+async def cmd_polls(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    polls = db.list_polls()
+    if not polls:
+        await update.message.reply_text(
+            "No polls yet. Create one with /poll <question>."
+        )
+        return
+    lines = ["📊 Polls (newest first):"]
+    for p in polls:
+        c = db.poll_counts(p["id"])
+        flag = "🟢" if p["status"] == "open" else "🔒"
+        q = p["question"] if len(p["question"]) <= 60 else p["question"][:57] + "…"
+        lines.append(f"{flag} #{p['id']}  👍{c.get('up', 0)} 👎{c.get('down', 0)}  «{q}»")
+    await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_pollresults(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    pid = _parse_poll_id(context.args[0]) if context.args else None
+    if pid is None:
+        await update.message.reply_text("Usage: /pollresults <id>")
+        return
+    poll = db.get_poll(pid)
+    if poll is None:
+        await update.message.reply_text(f"No poll #{pid}.")
+        return
+    counts = db.poll_counts(pid)
+    up, down = counts.get("up", 0), counts.get("down", 0)
+    total = up + down
+    status = "open" if poll["status"] == "open" else "closed"
+    header = f"📊 Poll #{pid} ({status})\n«{poll['question']}»\n"
+    if total == 0:
+        await update.message.reply_text(header + "\nNo votes yet.")
+        return
+    pct = round(100 * up / total)
+    lines = [header, f"{total} vote(s) · {pct}% 👍", f"👍 {up} · 👎 {down}", ""]
+    for r in db.poll_votes_detail(pid):
+        name = r["first_name"] or "?"
+        uname = f" @{r['username']}" if r["username"] else ""
+        lines.append(f"{jobs.POLL_EMOJI.get(r['value'], '?')} {name}{uname}")
+    text = "\n".join(lines)
+    for start in range(0, len(text), 3800):
+        await update.message.reply_text(text[start : start + 3800])
+
+
+@admin_only
+async def cmd_polledit(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Edit a poll's question and rewrite every copy that's already been sent."""
+    parts = (update.message.text or "").split(None, 2)
+    pid = _parse_poll_id(parts[1]) if len(parts) >= 2 else None
+    if pid is None or len(parts) < 3:
+        await update.message.reply_text(
+            "Usage: /polledit <id> <new question>   (| Russian optional)"
+        )
+        return
+    poll = db.get_poll(pid)
+    if poll is None:
+        await update.message.reply_text(f"No poll #{pid}.")
+        return
+    en, ru = parse_prompt_line(parts[2].strip())
+    db.update_poll_question(pid, en, ru)
+    poll = db.get_poll(pid)
+    keyboard = jobs.poll_keyboard(pid, closed=poll["status"] != "open")
+    edited = 0
+    for row in db.poll_messages_for(pid):
+        try:
+            await context.bot.edit_message_text(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                text=jobs.poll_question(poll, db.get_user_lang(row["tg_id"])),
+                reply_markup=keyboard,
+            )
+            edited += 1
+        except Exception:
+            log.debug("poll edit failed for %s/%s", row["tg_id"], pid)
+    await update.message.reply_text(f"✏️ Poll #{pid} updated in {edited} chat(s).")
+
+
+@admin_only
+async def cmd_pollclose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Stop accepting votes: taps stop registering, final tallies stay visible."""
+    pid = _parse_poll_id(context.args[0]) if context.args else None
+    if pid is None:
+        await update.message.reply_text("Usage: /pollclose <id>")
+        return
+    poll = db.get_poll(pid)
+    if poll is None:
+        await update.message.reply_text(f"No poll #{pid}.")
+        return
+    db.set_poll_status(pid, "closed")
+    keyboard = jobs.poll_keyboard(pid, closed=True)
+    for row in db.poll_messages_for(pid):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                reply_markup=keyboard,
+            )
+        except Exception:
+            log.debug("poll close update failed for %s/%s", row["tg_id"], pid)
+    c = db.poll_counts(pid)
+    await update.message.reply_text(
+        f"🔒 Poll #{pid} closed. Final: 👍 {c.get('up', 0)} · 👎 {c.get('down', 0)}."
+    )
 
 
 def _resolve_user(arg: str):

@@ -70,6 +70,29 @@ CREATE TABLE IF NOT EXISTS suggestions (
     status     TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | dismissed
     created_at TEXT
 );
+-- Custom admin-authored 👍/👎 feedback polls. Each poll is a row here; votes
+-- and the sent message copies reference it by id so several polls coexist.
+CREATE TABLE IF NOT EXISTS polls (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    question    TEXT NOT NULL,               -- English (primary/fallback)
+    question_ru TEXT,                         -- optional Russian
+    status      TEXT NOT NULL DEFAULT 'open', -- open | closed
+    created_by  INTEGER,
+    created_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS poll_votes (
+    poll_id  INTEGER NOT NULL,
+    tg_id    INTEGER NOT NULL,
+    value    TEXT NOT NULL,               -- up | down
+    voted_at TEXT,
+    PRIMARY KEY (poll_id, tg_id)
+);
+CREATE TABLE IF NOT EXISTS poll_messages (
+    poll_id    INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (poll_id, tg_id)
+);
 """
 
 
@@ -398,6 +421,87 @@ def delete_collage_messages(date: str) -> None:
 
 def delete_ratings(date: str) -> None:
     _exec("DELETE FROM ratings WHERE date=?", (date,))
+
+
+# --- custom feedback polls --------------------------------------------------
+
+def create_poll(question: str, question_ru: str | None, created_by: int) -> int:
+    cur = _exec(
+        "INSERT INTO polls(question, question_ru, created_by, created_at) "
+        "VALUES(?, ?, ?, ?)",
+        (question.strip(), question_ru.strip() if question_ru else None,
+         created_by, _now()),
+    )
+    return cur.lastrowid
+
+
+def get_poll(poll_id: int) -> sqlite3.Row | None:
+    return _exec("SELECT * FROM polls WHERE id=?", (poll_id,)).fetchone()
+
+
+def list_polls() -> list[sqlite3.Row]:
+    return _exec("SELECT * FROM polls ORDER BY id DESC").fetchall()
+
+
+def update_poll_question(poll_id: int, question: str, question_ru: str | None) -> bool:
+    cur = _exec(
+        "UPDATE polls SET question=?, question_ru=? WHERE id=?",
+        (question.strip(), question_ru.strip() if question_ru else None, poll_id),
+    )
+    return cur.rowcount > 0
+
+
+def set_poll_status(poll_id: int, status: str) -> None:
+    _exec("UPDATE polls SET status=? WHERE id=?", (status, poll_id))
+
+
+def set_poll_vote(poll_id: int, tg_id: int, value: str) -> bool:
+    """Store/replace a user's vote. Returns False if it was already this value
+    (so callers can skip re-editing keyboards)."""
+    row = _exec(
+        "SELECT value FROM poll_votes WHERE poll_id=? AND tg_id=?", (poll_id, tg_id)
+    ).fetchone()
+    if row and row["value"] == value:
+        return False
+    _exec(
+        "INSERT INTO poll_votes(poll_id, tg_id, value, voted_at) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(poll_id, tg_id) DO UPDATE SET value=excluded.value, "
+        "voted_at=excluded.voted_at",
+        (poll_id, tg_id, value, _now()),
+    )
+    return True
+
+
+def poll_counts(poll_id: int) -> dict[str, int]:
+    rows = _exec(
+        "SELECT value, COUNT(*) AS n FROM poll_votes WHERE poll_id=? GROUP BY value",
+        (poll_id,),
+    ).fetchall()
+    return {r["value"]: r["n"] for r in rows}
+
+
+def poll_votes_detail(poll_id: int) -> list[sqlite3.Row]:
+    """Every vote with the voter joined in, newest first — for /pollresults."""
+    return _exec(
+        "SELECT v.tg_id, v.value, v.voted_at, u.first_name, u.username "
+        "FROM poll_votes v LEFT JOIN users u ON u.tg_id = v.tg_id "
+        "WHERE v.poll_id=? ORDER BY v.voted_at DESC",
+        (poll_id,),
+    ).fetchall()
+
+
+def add_poll_message(poll_id: int, tg_id: int, message_id: int) -> None:
+    _exec(
+        "INSERT INTO poll_messages(poll_id, tg_id, message_id) VALUES(?, ?, ?) "
+        "ON CONFLICT(poll_id, tg_id) DO UPDATE SET message_id=excluded.message_id",
+        (poll_id, tg_id, message_id),
+    )
+
+
+def poll_messages_for(poll_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM poll_messages WHERE poll_id=?", (poll_id,)
+    ).fetchall()
 
 
 # --- feedback & suggestions ---------------------------------------------------

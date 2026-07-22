@@ -7,11 +7,13 @@ from telegram import LinkPreviewOptions, Update
 from telegram.ext import (
     Application,
     ApplicationBuilder,
+    ApplicationHandlerStop,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     Defaults,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
@@ -72,6 +74,25 @@ async def notify_deploy(app: Application) -> None:
     db.set_setting("deployed_commit", commit)
 
 
+async def access_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """First thing every update hits (group -3). When ALLOWED_USER_IDS is set
+    (private/test bot), silently drop anyone not on the list and stop all further
+    handlers. Empty allowlist = open bot, so production is unaffected."""
+    if not config.ALLOWED_USER_IDS:
+        return
+    user = update.effective_user
+    if user and user.id in config.ALLOWED_USER_IDS:
+        return
+    if update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "🔒 This is a private test bot."
+            )
+        except Exception:
+            pass
+    raise ApplicationHandlerStop
+
+
 async def on_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Route documents: admin .txt = prompt import, images = submission."""
     doc = update.message.document
@@ -102,6 +123,10 @@ def build_app() -> Application:
         .build()
     )
 
+    # Access gate: runs before everything (group -3). On a private/test bot it
+    # blocks non-allowlisted users; on prod (empty allowlist) it's a no-op.
+    app.add_handler(TypeHandler(Update, access_gate), group=-3)
+
     # Any command cancels a pending /feedback or /suggest_prompt text capture.
     # Group -1 runs before the command handlers below, without consuming them.
     app.add_handler(MessageHandler(filters.COMMAND, usr.clear_awaiting), group=-1)
@@ -116,6 +141,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("suggest_prompt", usr.cmd_suggest))
     app.add_handler(CallbackQueryHandler(usr.on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
+    app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
@@ -142,6 +168,11 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("stats", adm.cmd_stats))
     app.add_handler(CommandHandler("suggestions", adm.cmd_suggestions))
     app.add_handler(CommandHandler("feedback_all", adm.cmd_feedback_all))
+    app.add_handler(CommandHandler("poll", adm.cmd_poll))
+    app.add_handler(CommandHandler("polls", adm.cmd_polls))
+    app.add_handler(CommandHandler("pollresults", adm.cmd_pollresults))
+    app.add_handler(CommandHandler("polledit", adm.cmd_polledit))
+    app.add_handler(CommandHandler("pollclose", adm.cmd_pollclose))
     app.add_handler(CommandHandler("approve", adm.cmd_approve))
     app.add_handler(CommandHandler("dismiss", adm.cmd_dismiss))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))

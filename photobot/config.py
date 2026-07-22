@@ -10,6 +10,12 @@ BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_IDS = {
     int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x
 }
+# Allowlist for a private/test bot: when non-empty, only these ids may reach the
+# bot at all (see the access gate in main.py). Empty = open to everyone, which
+# is the production default — leave ALLOWED_IDS unset in prod.
+ALLOWED_USER_IDS = {
+    int(x) for x in os.getenv("ALLOWED_IDS", "").replace(" ", "").split(",") if x
+}
 TZ = ZoneInfo(os.getenv("TZ", "Europe/Berlin"))
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "./data")).resolve()
@@ -50,6 +56,15 @@ COLLAGE_GAP = 14              # space between tiles
 COLLAGE_PAD = 48              # outer margin
 COLLAGE_ASPECT_MIN = 0.55     # clamp extreme portraits (below this = mild crop)
 COLLAGE_ASPECT_MAX = 1.9      # clamp extreme panoramas
+
+# Zoomable hi-res companion file. On busy days the compressed collage photo is
+# too small to read, so alongside it we send the same card rendered at a higher
+# native resolution as a document (uncompressed, tap-to-zoom). Skipped on small
+# days where the inline photo is already clear.
+COLLAGE_HIRES_MIN_PHOTOS = 10  # only attach the zoom file at/above this many
+COLLAGE_HIRES_SCALE = 4.0      # 4x ~ matches typical Telegram-photo source res
+COLLAGE_HIRES_MAX_SIDE = 8000  # cap the long side of the hi-res file
+COLLAGE_HIRES_QUALITY = 90     # JPEG quality for the hi-res file
 
 
 def validate() -> None:

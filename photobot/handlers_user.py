@@ -228,6 +228,39 @@ async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
 
+async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Up/down feedback-poll tap: store the vote, refresh tallies on every copy."""
+    query = update.callback_query
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    if query.data == "pollclosed":
+        await query.answer(t(lang, "POLL_CLOSED"))
+        return
+    _, poll_s, value = query.data.split(":", 2)
+    poll_id = int(poll_s)
+    poll = db.get_poll(poll_id)
+    if value not in jobs.POLL_EMOJI or poll is None:
+        await query.answer()
+        return
+    if poll["status"] != "open":
+        await query.answer(t(lang, "POLL_CLOSED"))
+        return
+    changed = db.set_poll_vote(poll_id, u.id, value)
+    await query.answer(t(lang, "POLL_THANKS"))
+    if not changed:
+        return
+    keyboard = jobs.poll_keyboard(poll_id)
+    for row in db.poll_messages_for(poll_id):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                reply_markup=keyboard,
+            )
+        except Exception:
+            log.debug("poll keyboard update failed for %s/%s", row["tg_id"], poll_id)
+
+
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Photo messages and image documents — the actual submissions."""
     if not await _register(update, context):

@@ -37,6 +37,54 @@ def rating_summary(date: str) -> str | None:
     return " · ".join(parts) if parts else None
 
 
+# Custom admin-authored 👍/👎 feedback polls. Same live-tally mechanism as the
+# collage ratings, keyed by the poll's id.
+POLL_OPTIONS = [("up", "👍"), ("down", "👎")]
+POLL_EMOJI = dict(POLL_OPTIONS)
+
+
+def poll_keyboard(poll_id: int, *, closed: bool = False) -> InlineKeyboardMarkup:
+    counts = db.poll_counts(poll_id)
+    row = []
+    for value, emoji in POLL_OPTIONS:
+        n = counts.get(value, 0)
+        label = f"{emoji} {n}" if n else emoji
+        # A closed poll keeps its final tallies but taps do nothing.
+        data = "pollclosed" if closed else f"poll:{poll_id}:{value}"
+        row.append(InlineKeyboardButton(label, callback_data=data))
+    return InlineKeyboardMarkup([row])
+
+
+def poll_question(poll, lang: str | None) -> str:
+    """Poll question in the user's language; English is the fallback."""
+    if lang == "ru" and poll["question_ru"]:
+        return poll["question_ru"]
+    return poll["question"]
+
+
+async def send_poll(
+    context: ContextTypes.DEFAULT_TYPE, poll, recipients: list[int]
+) -> tuple[int, int]:
+    """Broadcast a poll with a live up/down keyboard, remembering each message so
+    every copy's tallies refresh on a vote. Returns (sent, failed)."""
+    keyboard = poll_keyboard(poll["id"])
+    sent = failed = 0
+    for uid in recipients:
+        try:
+            msg = await context.bot.send_message(
+                uid, poll_question(poll, db.get_user_lang(uid)), reply_markup=keyboard
+            )
+            db.add_poll_message(poll["id"], uid, msg.message_id)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            failed += 1
+        except Exception:
+            log.exception("poll %s send to %s failed", poll["id"], uid)
+            failed += 1
+    return sent, failed
+
+
 def prompt_text(prompt, lang: str | None) -> str:
     """Prompt in the user's language; English text is the primary/fallback."""
     if lang == "ru" and prompt["text_ru"]:
@@ -382,10 +430,24 @@ async def send_collage(
     seed = hash(date) & 0x7FFFFFFF
     daynum = day_number(date)
 
-    def collage_path(lang: str) -> Path:
+    # Busy days: the compressed inline photo is too small to read, so attach a
+    # zoomable hi-res file (a document) alongside it. Small days don't need it.
+    attach_hires = n >= config.COLLAGE_HIRES_MIN_PHOTOS
+
+    def collage_path(lang: str, *, hires: bool = False) -> Path:
         stem = "collage_preview" if preview_to else "collage"
-        out = day_dir(date) / f"{stem}_{lang}.jpg"
+        suffix = "_hires" if hires else ""
+        out = day_dir(date) / f"{stem}{suffix}_{lang}.jpg"
         prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
+        extra = (
+            dict(
+                scale=config.COLLAGE_HIRES_SCALE,
+                max_side=config.COLLAGE_HIRES_MAX_SIDE,
+                quality=config.COLLAGE_HIRES_QUALITY,
+            )
+            if hires
+            else {}
+        )
         collage.build_collage(
             paths,
             out,
@@ -394,6 +456,7 @@ async def send_collage(
             day_number=daynum,
             lang=lang,
             seed=seed,
+            **extra,
         )
         return out
 
@@ -406,18 +469,33 @@ async def send_collage(
             return t(lang, "COLLAGE_CAPTION_SOLO")
         return t(lang, "COLLAGE_CAPTION", n=n)
 
+    async def send_hires(uid: int, lang: str, cache: dict[str, str], prefix: str = ""):
+        """Send the zoomable hi-res file, reusing Telegram's file_id per language
+        so it's uploaded at most once."""
+        caption = prefix + t(lang, "COLLAGE_ZOOM")
+        fname = f"collage_{date}.jpg"
+        if lang in cache:
+            await context.bot.send_document(uid, cache[lang], caption=caption, filename=fname)
+            return
+        with open(collage_path(lang, hires=True), "rb") as f:
+            dmsg = await context.bot.send_document(uid, f, caption=caption, filename=fname)
+        cache[lang] = dmsg.document.file_id
+
     if preview_to is not None:
-        out = collage_path(lang_of(preview_to))
-        with open(out, "rb") as f:
+        lang = lang_of(preview_to)
+        with open(collage_path(lang), "rb") as f:
             await context.bot.send_photo(
                 preview_to, f, caption=f"[preview] {caption_for(preview_to)}"
             )
+        if attach_hires:
+            await send_hires(preview_to, lang, {}, prefix="[preview] ")
         return f"preview sent ({n} photos)"
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
     # Build each needed collage once, then reuse Telegram's file_id per language.
     keyboard = rating_keyboard(date)
     file_ids: dict[str, str] = {}
+    doc_ids: dict[str, str] = {}
     sent = 0
     for uid in recipients:
         lang = lang_of(uid)
@@ -435,6 +513,8 @@ async def send_collage(
             # remembered so every copy's tallies can be updated on each vote
             db.add_collage_message(date, uid, msg.message_id)
             sent += 1
+            if attach_hires:
+                await send_hires(uid, lang, doc_ids)
         except Forbidden:
             db.set_user_status(uid, "inactive")
         except Exception:

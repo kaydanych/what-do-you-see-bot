@@ -65,9 +65,12 @@ STRINGS = {
         "COLLAGE_CAPTION_SOLO": (
             "🖼 Сегодня ты участвовал(а) в одиночку — но коллаж всё равно твой! До завтра!"
         ),
+        "COLLAGE_ZOOM": "📎 Полное разрешение — открой, чтобы рассмотреть каждое фото",
         "TODAY_SUBMITTED": "\n\nТвоё фото уже у меня ✅ (можешь прислать другое — заменю)",
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
         "RATE_THANKS": "Спасибо за оценку! {emoji}",
+        "POLL_THANKS": "Спасибо! Твой голос учтён.",
+        "POLL_CLOSED": "Опрос закрыт — голосование завершено.",
         "TZ_SUFFIX": "по Берлину",
         "FEEDBACK_ASK": (
             "Напиши свой отзыв следующим сообщением — я передам его организатору 🙏"
@@ -156,9 +159,12 @@ STRINGS = {
             "🖼 You were the only one today — but the collage is still yours! "
             "See you tomorrow!"
         ),
+        "COLLAGE_ZOOM": "📎 Full resolution — open it to look closely at every photo",
         "TODAY_SUBMITTED": "\n\nYour photo is in ✅ (send another one to replace it)",
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
         "RATE_THANKS": "Thanks for rating! {emoji}",
+        "POLL_THANKS": "Thanks! Your vote is counted.",
+        "POLL_CLOSED": "This poll is closed — voting has ended.",
         "TZ_SUFFIX": "Berlin time",
         "FEEDBACK_ASK": (
             "Send your feedback as your next message — I'll pass it on to the organizer 🙏"

@@ -176,6 +176,9 @@ def build_collage(
     day_number: int | None = None,
     lang: str = "en",
     seed: int | None = None,
+    scale: float = 1.0,
+    max_side: int | None = None,
+    quality: int = 88,
 ) -> Path:
     """Assemble the day's photos into a justified-mosaic "card": each photo
     keeps its own aspect ratio (no square-cropping, no duplicate padding),
@@ -183,7 +186,12 @@ def build_collage(
     and a footer participant count. Extreme aspect ratios are mildly clamped.
 
     `seed` fixes the photo arrangement so that per-language renders of the same
-    day share an identical mosaic and differ only in the header text."""
+    day share an identical mosaic and differ only in the header text.
+
+    `scale` multiplies every dimension (tiles, spacing, fonts) so the whole card
+    renders at a higher native resolution without changing its look — use it with
+    a larger `max_side` (and `sendDocument`) to produce a zoomable file. At the
+    default scale=1.0 / max_side=None the output is byte-identical to before."""
     rng = random.Random(seed)
     paths = [Path(p) for p in photo_paths if Path(p).exists()]
     if not paths:
@@ -196,24 +204,27 @@ def build_collage(
     images = [_load_rgb(p) for p in paths]
     rng.shuffle(images)
 
-    pad = config.COLLAGE_PAD
-    gap = config.COLLAGE_GAP
-    radius = config.COLLAGE_RADIUS
-    row_h = _base_row_h(n)
+    pad = int(config.COLLAGE_PAD * scale)
+    gap = int(config.COLLAGE_GAP * scale)
+    radius = int(config.COLLAGE_RADIUS * scale)
+    row_h = int(_base_row_h(n) * scale)
     # Aim for a phone-portrait card (~3:4). The width grows with sqrt(n) so the
     # total aspect stays roughly constant as photos pile up, rather than turning
     # into a tall sliver; small days are floored to COLLAGE_WIDTH so a lone photo
     # still reads at a sane width instead of a thin strip.
-    W = max(config.COLLAGE_WIDTH, int(math.sqrt(config.COLLAGE_PORTRAIT_K * n) * row_h))
+    W = max(
+        int(config.COLLAGE_WIDTH * scale),
+        int(math.sqrt(config.COLLAGE_PORTRAIT_K * n) * row_h),
+    )
     content_w = W - 2 * pad
 
     rows = _justify(images, content_w, row_h, gap)
 
     # --- measure header / footer so we can size the canvas ---
     scratch = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    f_date = _font(False, 28)
-    f_prompt = _font(True, 34)
-    f_foot = _font(False, 28)
+    f_date = _font(False, int(28 * scale))
+    f_prompt = _font(True, int(34 * scale))
+    f_foot = _font(False, int(28 * scale))
 
     header_lines: list[tuple[str, object, str]] = []  # (text, font, colour)
     if on_date is not None:
@@ -230,11 +241,12 @@ def build_collage(
         asc, desc = font.getmetrics()
         return asc + desc
 
+    header_gap = int(26 * scale)
     header_h = 0
     if header_lines:
-        header_h = sum(int(line_h(f) * 1.28) for _, f, _ in header_lines) + 26
+        header_h = sum(int(line_h(f) * 1.28) for _, f, _ in header_lines) + header_gap
 
-    footer_h = int(line_h(f_foot) * 1.3) + 10
+    footer_h = int(line_h(f_foot) * 1.3) + int(10 * scale)
     body_h = sum(row[0][2] for row in rows) + gap * (len(rows) - 1)
     total_h = pad + header_h + body_h + footer_h + pad
 
@@ -246,7 +258,7 @@ def build_collage(
     for text, font, colour in header_lines:
         draw.text((pad, y), text, font=font, fill=colour)
         y += int(line_h(font) * 1.28)
-    y += 26 if header_lines else 0
+    y += header_gap if header_lines else 0
 
     # mosaic
     for row in rows:
@@ -268,11 +280,12 @@ def build_collage(
         fill=config.COLLAGE_DIM,
     )
 
-    if max(canvas.size) > config.COLLAGE_MAX_SIDE:
-        canvas.thumbnail((config.COLLAGE_MAX_SIDE, config.COLLAGE_MAX_SIDE))
+    cap = max_side or config.COLLAGE_MAX_SIDE
+    if max(canvas.size) > cap:
+        canvas.thumbnail((cap, cap))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(out_path, "JPEG", quality=88)
+    canvas.save(out_path, "JPEG", quality=quality)
     return out_path
 
 
