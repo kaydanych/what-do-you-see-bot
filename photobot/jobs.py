@@ -44,16 +44,6 @@ def prompt_text(prompt, lang: str | None) -> str:
     return prompt["text"]
 
 
-def prompt_credit(prompt, lang: str | None) -> str:
-    """Credit line for user-suggested prompts, '' for library ones."""
-    if prompt["source"] != "suggestion" or not prompt["added_by"]:
-        return ""
-    u = db.get_user(prompt["added_by"])
-    if u is None:
-        return ""
-    return t(lang, "PROMPT_CREDIT", name=u["first_name"])
-
-
 def now_local() -> datetime:
     return datetime.now(config.TZ)
 
@@ -232,8 +222,7 @@ async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
             db.get_user_lang(uid),
             "PROMPT",
             text=prompt_text(prompt, db.get_user_lang(uid)),
-        )
-        + prompt_credit(prompt, db.get_user_lang(uid)),
+        ),
     )
 
     unused = db.count_unused_prompts()
@@ -241,7 +230,7 @@ async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
     if prompt["source"] == "suggestion":
         su = db.get_user(prompt["added_by"]) if prompt["added_by"] else None
         if su:
-            note += f"\n💡 Suggested by {su['first_name']} — users see the credit."
+            note += f"\n💡 Suggested by {su['first_name']} (credit is in the prompt text)."
     if unused == 0:
         note += "\n⚠️ That was the LAST prompt in the queue — upload more before tomorrow."
     elif unused < LOW_LIBRARY_THRESHOLD:
@@ -268,7 +257,7 @@ async def send_preview(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
     if prompt["source"] == "suggestion" and prompt["added_by"]:
         su = db.get_user(prompt["added_by"])
         if su:
-            lines.append(f"💡 Suggested by {su['first_name']} — users will see the credit.")
+            lines.append(f"💡 Suggested by {su['first_name']} (credit is in the prompt text).")
     unused = db.count_unused_prompts()
     lines.append(f"📚 {unused} unused prompt(s) in the queue (this one included).")
     await notify_admins(context, "\n".join(lines))
@@ -383,18 +372,11 @@ async def send_collage(
     n = len(photos)
 
     prompt_en = prompt_ru = None
-    credit_name = None
     day = db.get_day(date)
     if day and day["prompt_id"]:
         prompt = db.get_prompt(day["prompt_id"])
         if prompt:
             prompt_en, prompt_ru = prompt["text"], prompt["text_ru"]
-            # Credit a user-suggested prompt by name (never their id); library
-            # prompts and departed suggesters leave the collage uncredited.
-            if prompt["source"] == "suggestion" and prompt["added_by"]:
-                u = db.get_user(prompt["added_by"])
-                if u and (u["first_name"] or "").strip():
-                    credit_name = u["first_name"].strip()
 
     # Same mosaic in every language, only the header/footer text differs.
     seed = hash(date) & 0x7FFFFFFF
@@ -404,12 +386,10 @@ async def send_collage(
         stem = "collage_preview" if preview_to else "collage"
         out = day_dir(date) / f"{stem}_{lang}.jpg"
         prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
-        credit = t(lang, "COLLAGE_CREDIT", name=credit_name) if credit_name else None
         collage.build_collage(
             paths,
             out,
             prompt=prompt_text,
-            credit=credit,
             on_date=date,
             day_number=daynum,
             lang=lang,

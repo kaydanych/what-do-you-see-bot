@@ -139,7 +139,6 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     prompt = db.get_prompt(day["prompt_id"])
     text = t(lang, "PROMPT", text=jobs.prompt_text(prompt, lang))
-    text += jobs.prompt_credit(prompt, lang)
     today = jobs.now_local().date().isoformat()
     if update.effective_user.id in db.submitter_ids(today):
         text += t(lang, "TODAY_SUBMITTED")

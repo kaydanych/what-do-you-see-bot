@@ -9,6 +9,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import config, db, jobs, version
+from .strings import t
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ ADMIN_HELP = """Admin commands
   already-sent prompts are kept as done and never repeat
 
 💡 Suggestions & feedback
-/approve <id> [en | ru] — queue a suggestion (edited text optional; suggester gets credited)
+/approve <id> [en | ru] — approve a suggestion; the suggester's name is baked into the prompt text as "Idea: Name". One /approve per line to batch several.
 /dismiss <id> — discard a suggestion
 /feedback_all — every /feedback message users have sent, in one place
 /suggestions — pending user prompt ideas
@@ -621,32 +622,64 @@ async def cmd_feedback_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text(text[start : start + 3800])
 
 
-@admin_only
-async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+def _has_cyrillic(s: str) -> bool:
+    return any("Ѐ" <= c <= "ӿ" for c in s)
+
+
+def bake_credit(text: str, name: str, lang: str) -> str:
+    """Append the suggester's name into the prompt text itself (WYSIWYG credit),
+    e.g. 'Send a photo of a smile. Idea: Olya'. The credit travels as plain text,
+    so it survives export/edit/reupload and shows up verbatim in the message and
+    on the collage. Avoids doubling terminal punctuation."""
+    base = text.strip()
+    sep = "" if base.endswith((".", "!", "?", "…")) else "."
+    return f"{base}{sep} " + t(lang, "IDEA_CREDIT", name=name)
+
+
+def _approve_one(line: str) -> str:
+    """Process a single '/approve <id> [en | ru]' line; return the reply text."""
+    body = line.split(maxsplit=1)
+    rest = body[1].strip() if len(body) > 1 else ""
+    parts = rest.split(maxsplit=1)
     try:
-        sid = int(context.args[0])
+        sid = int(parts[0])
     except (IndexError, ValueError):
-        await update.message.reply_text("Usage: /approve <id> [en text | ru text]")
-        return
+        return f"«{line}» — usage: /approve <id> [en text | ru text]"
     s = db.get_suggestion(sid)
     if s is None:
-        await update.message.reply_text(f"No suggestion #{sid}.")
-        return
+        return f"No suggestion #{sid}."
     if s["status"] != "pending":
-        await update.message.reply_text(f"Suggestion #{sid} is already {s['status']}.")
-        return
-    raw = " ".join(context.args[1:]).strip() or s["text"]
-    en, ru = parse_prompt_line(raw)
-    # added_by = the suggester, so the daily prompt can credit them
+        return f"Suggestion #{sid} is already {s['status']}."
+
+    edit = parts[1].strip() if len(parts) > 1 else ""
+    en, ru = parse_prompt_line(edit or s["text"])
+    u = db.get_user(s["tg_id"])
+    name = u["first_name"].strip() if u and (u["first_name"] or "").strip() else None
+    if name:
+        # The primary field may hold a Russian-only suggestion, so pick the label
+        # by script rather than assuming English.
+        en = bake_credit(en, name, "ru" if _has_cyrillic(en) else "en")
+        if ru:
+            ru = bake_credit(ru, name, "ru")
+    # added_by/source keep the suggestion audit trail; the visible credit is the
+    # baked-in text above, not this metadata.
     pid = db.add_prompt(en, s["tg_id"], text_ru=ru, source="suggestion")
     db.set_suggestion_status(sid, "approved")
-    u = db.get_user(s["tg_id"])
-    name = u["first_name"] if u else f"id {s['tg_id']}"
-    note = "" if ru else "\n(no RU version — everyone gets this text as-is)"
-    await update.message.reply_text(
-        f"Queued #{pid} «{en}» — credit goes to {name}. "
-        f"Unused prompts: {db.count_unused_prompts()}{note}"
-    )
+    who = name or f"id {s['tg_id']}"
+    note = "" if ru else "\n  (no RU yet — add it when you /exportprompts and edit)"
+    return f"Queued #{pid} «{en}» — credited to {who} in the text.{note}"
+
+
+@admin_only
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # One /approve per line, so a multi-line message batch-approves cleanly
+    # instead of swallowing the following lines as edited prompt text.
+    text = update.message.text or ""
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    cmd_lines = [ln for ln in lines if ln.lower().startswith("/approve")] or [text.strip()]
+    replies = [_approve_one(ln) for ln in cmd_lines]
+    replies.append(f"Unused prompts: {db.count_unused_prompts()}")
+    await update.message.reply_text("\n".join(replies))
 
 
 @admin_only

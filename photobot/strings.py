@@ -60,14 +60,13 @@ STRINGS = {
             "🚨 Последний звонок: до дедлайна {minutes} мин, а твоего фото ещё нет!\n\n"
             "Задание на сегодня:\n{text}"
         ),
-        "COLLAGE_CREDIT": "идея: {name}",
+        "IDEA_CREDIT": "Идея: {name}",
         "COLLAGE_CAPTION": "🖼 Коллаж дня — участников: {n}. До завтра!",
         "COLLAGE_CAPTION_SOLO": (
             "🖼 Сегодня ты участвовал(а) в одиночку — но коллаж всё равно твой! До завтра!"
         ),
         "TODAY_SUBMITTED": "\n\nТвоё фото уже у меня ✅ (можешь прислать другое — заменю)",
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
-        "PROMPT_CREDIT": "\n\n💡 Сегодняшнее задание предложил(а) {name}",
         "RATE_THANKS": "Спасибо за оценку! {emoji}",
         "TZ_SUFFIX": "по Берлину",
         "FEEDBACK_ASK": (
@@ -151,7 +150,7 @@ STRINGS = {
             "🚨 Last call: {minutes} min to the deadline and I still don't have "
             "your photo!\n\nToday's challenge:\n{text}"
         ),
-        "COLLAGE_CREDIT": "idea by {name}",
+        "IDEA_CREDIT": "Idea: {name}",
         "COLLAGE_CAPTION": "🖼 Collage of the day — {n} participants. See you tomorrow!",
         "COLLAGE_CAPTION_SOLO": (
             "🖼 You were the only one today — but the collage is still yours! "
@@ -159,7 +158,6 @@ STRINGS = {
         ),
         "TODAY_SUBMITTED": "\n\nYour photo is in ✅ (send another one to replace it)",
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
-        "PROMPT_CREDIT": "\n\n💡 Today's challenge was suggested by {name}",
         "RATE_THANKS": "Thanks for rating! {emoji}",
         "TZ_SUFFIX": "Berlin time",
         "FEEDBACK_ASK": (

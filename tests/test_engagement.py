@@ -1,6 +1,6 @@
 import pytest
 
-from photobot import db, jobs
+from photobot import db, handlers_admin as adm, jobs
 
 
 @pytest.fixture(autouse=True)
@@ -75,12 +75,12 @@ def test_suggestion_lifecycle_and_credit():
     assert db.pending_suggestions() == []
     assert db.get_suggestion(sid)["status"] == "approved"
 
-    prompt = db.get_prompt(pid)
-    assert "Ann" in jobs.prompt_credit(prompt, "en")
-    assert "Ann" in jobs.prompt_credit(prompt, "ru")
-    # library prompts never carry a credit line
-    library = db.get_prompt(db.add_prompt("water", 7))
-    assert jobs.prompt_credit(library, "en") == ""
+    # WYSIWYG credit: the suggester's name is baked into the prompt text itself,
+    # so it round-trips through export/edit/reupload as plain text.
+    assert adm.bake_credit("Send a photo of a smile", "Ann", "en") == "Send a photo of a smile. Idea: Ann"
+    assert adm.bake_credit("Пришли фото улыбки", "Ann", "ru") == "Пришли фото улыбки. Идея: Ann"
+    # terminal punctuation is not doubled
+    assert adm.bake_credit("What do you see?", "Ann", "en") == "What do you see? Idea: Ann"
 
 
 def test_participation_and_collage_dates():
