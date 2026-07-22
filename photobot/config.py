@@ -62,7 +62,8 @@ COLLAGE_ASPECT_MAX = 1.9      # clamp extreme panoramas
 # native resolution as a document (uncompressed, tap-to-zoom). Skipped on small
 # days where the inline photo is already clear.
 COLLAGE_HIRES_MIN_PHOTOS = 10  # only attach the zoom file at/above this many
-COLLAGE_HIRES_SCALE = 4.0      # 4x ~ matches typical Telegram-photo source res
+COLLAGE_HIRES_SCALE = 3.0      # 3x stays plenty zoomable but ~40% fewer pixels
+                               # than 4x, so the NAS renders it much faster
 COLLAGE_HIRES_MAX_SIDE = 8000  # cap the long side of the hi-res file
 COLLAGE_HIRES_QUALITY = 90     # JPEG quality for the hi-res file
 

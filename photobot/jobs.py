@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
@@ -434,7 +435,7 @@ async def send_collage(
     # zoomable hi-res file (a document) alongside it. Small days don't need it.
     attach_hires = n >= config.COLLAGE_HIRES_MIN_PHOTOS
 
-    def collage_path(lang: str, *, hires: bool = False) -> Path:
+    def _build_sync(lang: str, hires: bool) -> Path:
         stem = "collage_preview" if preview_to else "collage"
         suffix = "_hires" if hires else ""
         out = day_dir(date) / f"{stem}{suffix}_{lang}.jpg"
@@ -460,6 +461,12 @@ async def send_collage(
         )
         return out
 
+    async def build(lang: str, *, hires: bool = False) -> Path:
+        """Render a collage off the event loop. Pillow is CPU-bound and a big
+        hi-res canvas takes many seconds on the NAS — running it inline froze the
+        whole bot (rating taps timed out). asyncio.to_thread keeps it responsive."""
+        return await asyncio.to_thread(_build_sync, lang, hires)
+
     def lang_of(uid: int) -> str:
         return "ru" if db.get_user_lang(uid) == "ru" else "en"
 
@@ -469,52 +476,64 @@ async def send_collage(
             return t(lang, "COLLAGE_CAPTION_SOLO")
         return t(lang, "COLLAGE_CAPTION", n=n)
 
-    async def send_hires(uid: int, lang: str, cache: dict[str, str], prefix: str = ""):
-        """Send the zoomable hi-res file, reusing Telegram's file_id per language
-        so it's uploaded at most once."""
-        caption = prefix + t(lang, "COLLAGE_ZOOM")
-        fname = f"collage_{date}.jpg"
-        if lang in cache:
-            await context.bot.send_document(uid, cache[lang], caption=caption, filename=fname)
-            return
-        with open(collage_path(lang, hires=True), "rb") as f:
-            dmsg = await context.bot.send_document(uid, f, caption=caption, filename=fname)
-        cache[lang] = dmsg.document.file_id
+    fname = f"collage_{date}.jpg"
 
     if preview_to is not None:
         lang = lang_of(preview_to)
-        with open(collage_path(lang), "rb") as f:
+        with open(await build(lang), "rb") as f:
             await context.bot.send_photo(
                 preview_to, f, caption=f"[preview] {caption_for(preview_to)}"
             )
         if attach_hires:
-            await send_hires(preview_to, lang, {}, prefix="[preview] ")
+            with open(await build(lang, hires=True), "rb") as f:
+                await context.bot.send_document(
+                    preview_to, f, filename=fname,
+                    caption="[preview] " + t(lang, "COLLAGE_ZOOM"),
+                )
         return f"preview sent ({n} photos)"
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
-    # Build each needed collage once, then reuse Telegram's file_id per language.
+    langs = {lang_of(uid) for uid in recipients}
+    # Render every needed collage up front (off the event loop) so each user then
+    # gets the photo and the hi-res file back-to-back, not minutes apart.
+    photo_path = {lang: await build(lang) for lang in langs}
+    doc_path = (
+        {lang: await build(lang, hires=True) for lang in langs} if attach_hires else {}
+    )
+
     keyboard = rating_keyboard(date)
-    file_ids: dict[str, str] = {}
+    photo_ids: dict[str, str] = {}
     doc_ids: dict[str, str] = {}
     sent = 0
     for uid in recipients:
         lang = lang_of(uid)
         try:
-            if lang not in file_ids:
-                with open(collage_path(lang), "rb") as f:
+            # Upload each collage to Telegram once, then reuse its file_id.
+            if lang in photo_ids:
+                msg = await context.bot.send_photo(
+                    uid, photo_ids[lang], caption=caption_for(uid), reply_markup=keyboard
+                )
+            else:
+                with open(photo_path[lang], "rb") as f:
                     msg = await context.bot.send_photo(
                         uid, f, caption=caption_for(uid), reply_markup=keyboard
                     )
-                file_ids[lang] = msg.photo[-1].file_id
-            else:
-                msg = await context.bot.send_photo(
-                    uid, file_ids[lang], caption=caption_for(uid), reply_markup=keyboard
-                )
+                photo_ids[lang] = msg.photo[-1].file_id
             # remembered so every copy's tallies can be updated on each vote
             db.add_collage_message(date, uid, msg.message_id)
             sent += 1
             if attach_hires:
-                await send_hires(uid, lang, doc_ids)
+                caption = t(lang, "COLLAGE_ZOOM")
+                if lang in doc_ids:
+                    await context.bot.send_document(
+                        uid, doc_ids[lang], caption=caption, filename=fname
+                    )
+                else:
+                    with open(doc_path[lang], "rb") as f:
+                        dmsg = await context.bot.send_document(
+                            uid, f, caption=caption, filename=fname
+                        )
+                    doc_ids[lang] = dmsg.document.file_id
         except Forbidden:
             db.set_user_status(uid, "inactive")
         except Exception:

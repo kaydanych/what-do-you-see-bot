@@ -201,17 +201,28 @@ async def cmd_suggest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await _store_suggestion(update, context, text)
 
 
+async def _answer(query, text: str | None = None) -> None:
+    """Answer a callback query, swallowing the harmless 'query is too old' error.
+    A tap that lands while the bot is briefly busy (e.g. rendering a big collage)
+    can exceed Telegram's ~15s answer window; the vote is already stored, so a
+    failed toast must not bubble up and spam the admins with error reports."""
+    try:
+        await query.answer(text=text)
+    except Exception:
+        log.debug("callback answer failed (stale query)")
+
+
 async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Collage rating tap: store the vote, refresh tallies on every copy."""
     query = update.callback_query
     _, date, value = query.data.split(":", 2)
     if value not in jobs.RATING_EMOJI:
-        await query.answer()
+        await _answer(query)
         return
     u = update.effective_user
     lang = db.get_user_lang(u.id)
     changed = db.set_rating(date, u.id, value)
-    await query.answer(t(lang, "RATE_THANKS", emoji=jobs.RATING_EMOJI[value]))
+    await _answer(query, t(lang, "RATE_THANKS", emoji=jobs.RATING_EMOJI[value]))
     if not changed:
         return
     keyboard = jobs.rating_keyboard(date)
@@ -234,19 +245,19 @@ async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     u = update.effective_user
     lang = db.get_user_lang(u.id)
     if query.data == "pollclosed":
-        await query.answer(t(lang, "POLL_CLOSED"))
+        await _answer(query, t(lang, "POLL_CLOSED"))
         return
     _, poll_s, value = query.data.split(":", 2)
     poll_id = int(poll_s)
     poll = db.get_poll(poll_id)
     if value not in jobs.POLL_EMOJI or poll is None:
-        await query.answer()
+        await _answer(query)
         return
     if poll["status"] != "open":
-        await query.answer(t(lang, "POLL_CLOSED"))
+        await _answer(query, t(lang, "POLL_CLOSED"))
         return
     changed = db.set_poll_vote(poll_id, u.id, value)
-    await query.answer(t(lang, "POLL_THANKS"))
+    await _answer(query, t(lang, "POLL_THANKS"))
     if not changed:
         return
     keyboard = jobs.poll_keyboard(poll_id)
