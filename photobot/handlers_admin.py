@@ -2,10 +2,12 @@ import functools
 import html
 import io
 import logging
+import random
 from datetime import date as date_cls
 from datetime import time
 
 from telegram import Update
+from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
 from . import config, db, jobs, version
@@ -64,7 +66,16 @@ deadline while unsent.
 /include N — undo an exclusion
 /kick <id|@username> — remove a user
 /preview — collage dry-run, sent only to you
-/unkick <id|@username> — restore a user"""
+/unkick <id|@username> — restore a user
+
+💬 Story of the day (the photo + why the author chose it)
+/photos [YYYY-MM-DD] — numbered author list for a day (numbers = the contact sheet)
+/askstory [YYYY-MM-DD] N — DM author N their photo and ask why they chose it
+/askstory random — pick a random past photo and ask its author
+/stories — stories the authors have answered, waiting to publish
+/editstory <id> <text> — edit a story's text (or write one yourself)
+/publishstory <id> — send that photo + story to the day's submitters (reveals the author's name)
+/dismissstory <id> — discard a story"""
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
@@ -413,6 +424,250 @@ async def cmd_include(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 @admin_only
 async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _moderate(update, context, "ban")
+
+
+# --- story of the day --------------------------------------------------------
+
+def _parse_date_arg(arg: str | None) -> str | None:
+    """Validate an ISO date; None/'' -> today, bad input -> None."""
+    if not arg:
+        return jobs.now_local().date().isoformat()
+    try:
+        return date_cls.fromisoformat(arg).isoformat()
+    except ValueError:
+        return None
+
+
+def _numbered_photos(date: str) -> list[str]:
+    """The contact-sheet numbering for a date (same order as /exclude N)."""
+    photos = db.photos_for(date, include_excluded=True)
+    lines = []
+    for i, p in enumerate(photos, 1):
+        u = db.get_user(p["tg_id"])
+        name = u["first_name"] if u else "?"
+        uname = f" @{u['username']}" if u and u["username"] else ""
+        exc = " ✂️excluded" if p["excluded"] else ""
+        lines.append(f"{i} — {name}{uname} (id {p['tg_id']}){exc}")
+    return lines
+
+
+@admin_only
+async def cmd_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reprint the numbered author list for any date, so you know which N to
+    pass to /askstory (the numbers match the deadline contact sheet)."""
+    msg = update.effective_message
+    date = _parse_date_arg(context.args[0] if context.args else None)
+    if date is None:
+        await msg.reply_text("Usage: /photos [YYYY-MM-DD] (default: today)")
+        return
+    lines = _numbered_photos(date)
+    if not lines:
+        await msg.reply_text(f"No submissions on {date}.")
+        return
+    header = f"📷 {date} — {len(lines)} photo(s):"
+    footer = f"\n/askstory {date} N — ask author N why they chose their photo"
+    await msg.reply_text(header + "\n" + "\n".join(lines) + "\n" + footer)
+
+
+async def _send_story_ask(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, date: str, photo
+) -> None:
+    """DM the author their own photo + that day's prompt and ask why they chose
+    it, then record the pending story."""
+    msg = update.effective_message
+    author_id = photo["tg_id"]
+    u = db.get_user(author_id)
+    name = u["first_name"] if u else str(author_id)
+    lang = db.get_user_lang(author_id)
+    day = db.get_day(date)
+    prompt = db.get_prompt(day["prompt_id"]) if day and day["prompt_id"] else None
+    ptext = jobs.prompt_text(prompt, lang) if prompt else "—"
+    try:
+        with open(photo["file_path"], "rb") as f:
+            ask = await context.bot.send_photo(
+                author_id, f, caption=t(lang, "STORY_ASK", prompt=ptext)
+            )
+    except Forbidden:
+        db.set_user_status(author_id, "inactive")
+        await msg.reply_text(f"{name} (id {author_id}) has blocked the bot — can't ask.")
+        return
+    except Exception as e:
+        await msg.reply_text(f"Couldn't ask {name} (id {author_id}): {e}")
+        return
+
+    sid = db.add_story(date, author_id, ask.message_id)
+    await msg.reply_text(
+        f"💬 Asked {name} about their photo from {date}.\n"
+        f"Story #{sid} is waiting for their reply — /stories to check."
+    )
+
+
+@admin_only
+async def cmd_askstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/askstory [date] N — DM that photo's author their own shot and ask why
+    they chose it. /askstory random picks a past photo for you. The reply is
+    captured for review, then /publishstory."""
+    msg = update.effective_message
+    args = context.args
+    if not args:
+        await msg.reply_text(
+            "Usage: /askstory [YYYY-MM-DD] N   (N from /photos [date])\n"
+            "       /askstory random   — surprise me with a past photo"
+        )
+        return
+    # /askstory random — pick a random past submission and ask its author.
+    if len(args) == 1 and args[0].lower() == "random":
+        candidates = [(d, p) for d in db.photo_dates() for p in db.photos_for(d)]
+        if not candidates:
+            await msg.reply_text("No past submissions to pick from yet.")
+            return
+        date, photo = random.choice(candidates)
+        await _send_story_ask(update, context, date, photo)
+        return
+    # A lone date just shows the numbered list; a lone number means today's N.
+    if len(args) == 1 and "-" in args[0] and _parse_date_arg(args[0]):
+        await cmd_photos(update, context)
+        return
+    if len(args) == 1:
+        date, nstr = jobs.now_local().date().isoformat(), args[0]
+    else:
+        date, nstr = _parse_date_arg(args[0]), args[1]
+    if date is None:
+        await msg.reply_text("Bad date. Usage: /askstory [YYYY-MM-DD] N")
+        return
+
+    photo, photos = _photo_by_number(date, nstr)
+    if photo is None:
+        await msg.reply_text(
+            f"No photo #{nstr} on {date} (there are {len(photos)}). Try /photos {date}."
+        )
+        return
+    await _send_story_ask(update, context, date, photo)
+
+
+@admin_only
+async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    rows = db.answered_stories()
+    if not rows:
+        await update.effective_message.reply_text(
+            "No stories waiting to publish.\n"
+            "Ask for one with /askstory [date] N (numbers from /photos)."
+        )
+        return
+    blocks = []
+    for s in rows:
+        u = db.get_user(s["tg_id"])
+        name = u["first_name"] if u else str(s["tg_id"])
+        blocks.append(
+            f"💬 #{s['id']} — {name}, photo from {s['date']}:\n«{s['text']}»\n"
+            f"/publishstory {s['id']} — send to that day's submitters\n"
+            f"/editstory {s['id']} <text> — edit · /dismissstory {s['id']} — discard"
+        )
+    await update.effective_message.reply_text("\n\n".join(blocks))
+
+
+@admin_only
+async def cmd_editstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/editstory <id> <text> — replace a story's text (also lets you author one
+    by hand for an author who hasn't replied)."""
+    msg = update.effective_message
+    parts = (msg.text or "").split(None, 2)
+    if len(parts) < 3 or not parts[1].isdigit():
+        await msg.reply_text("Usage: /editstory <id> <new story text>")
+        return
+    sid = int(parts[1])
+    if not db.set_story_text(sid, parts[2].strip()):
+        await msg.reply_text(f"No story #{sid}.")
+        return
+    s = db.get_story(sid)
+    u = db.get_user(s["tg_id"])
+    name = u["first_name"] if u else str(s["tg_id"])
+    await msg.reply_text(
+        f"✏️ Story #{sid} ({name}, {s['date']}) updated:\n«{s['text']}»\n"
+        f"/publishstory {sid} to send it."
+    )
+
+
+@admin_only
+async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the photo + the author's story to everyone who submitted that day
+    (admins always included). This is where the author's name is revealed."""
+    msg = update.effective_message
+    if not context.args:
+        await msg.reply_text("Usage: /publishstory <id> (see /stories)")
+        return
+    try:
+        sid = int(context.args[0])
+    except ValueError:
+        await msg.reply_text("Usage: /publishstory <id>")
+        return
+    s = db.get_story(sid)
+    if s is None:
+        await msg.reply_text(f"No story #{sid}.")
+        return
+    if s["status"] == "published":
+        await msg.reply_text(f"Story #{sid} was already published.")
+        return
+    if not s["text"]:
+        await msg.reply_text(f"Story #{sid} has no reply yet — nothing to publish.")
+        return
+    photo = next(
+        (
+            p
+            for p in db.photos_for(s["date"], include_excluded=True)
+            if p["tg_id"] == s["tg_id"]
+        ),
+        None,
+    )
+    if photo is None:
+        await msg.reply_text(
+            f"The photo for story #{sid} is gone from {s['date']} — can't publish."
+        )
+        return
+    author = db.get_user(s["tg_id"])
+    name = author["first_name"] if author else str(s["tg_id"])
+    day = db.get_day(s["date"])
+    prompt = db.get_prompt(day["prompt_id"]) if day and day["prompt_id"] else None
+    recipients = list(
+        dict.fromkeys(db.submitter_ids(s["date"]) + list(config.ADMIN_IDS))
+    )
+    sent = failed = 0
+    for uid in recipients:
+        lang = db.get_user_lang(uid)
+        ptext = jobs.prompt_text(prompt, lang) if prompt else "—"
+        caption = t(
+            lang, "STORY_PUBLISH", name=name, text=s["text"], prompt=ptext,
+            date=s["date"],
+        )
+        try:
+            with open(photo["file_path"], "rb") as f:
+                await context.bot.send_photo(uid, f, caption=caption)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            failed += 1
+        except Exception:
+            log.exception("publishstory %s to %s failed", sid, uid)
+            failed += 1
+    db.set_story_status(sid, "published")
+    await msg.reply_text(f"💬 Story #{sid} published — sent {sent}, failed {failed}.")
+
+
+@admin_only
+async def cmd_dismissstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    msg = update.effective_message
+    if not context.args:
+        await msg.reply_text("Usage: /dismissstory <id>")
+        return
+    try:
+        sid = int(context.args[0])
+    except ValueError:
+        await msg.reply_text("Usage: /dismissstory <id>")
+        return
+    if not db.set_story_status(sid, "dismissed"):
+        await msg.reply_text(f"No story #{sid}.")
+        return
+    await msg.reply_text(f"Story #{sid} dismissed.")
 
 
 @admin_only

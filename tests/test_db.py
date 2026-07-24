@@ -119,3 +119,58 @@ def test_streaks_for_excludes_non_submitters():
     db.upsert_photo("2026-07-23", 1, "/x/a.jpg")
     streaks = db.streaks_for("2026-07-23")
     assert streaks == {1: 1}        # only actual submitters appear
+
+
+def test_story_lifecycle():
+    sid = db.add_story("2026-07-21", 42, ask_message_id=555)
+    # freshly asked: shows up as the author's pending ask, matchable by reply
+    assert db.pending_story_for(42)["id"] == sid
+    assert db.story_by_ask_message(42, 555)["id"] == sid
+    assert db.story_by_ask_message(42, 999) is None  # wrong message
+    assert db.answered_stories() == []  # not answered yet
+
+    db.set_story_answer(sid, "  it reminded me of home  ")
+    s = db.get_story(sid)
+    assert s["status"] == "answered" and s["text"] == "it reminded me of home"
+    assert s["answered_at"] is not None
+    # answered asks no longer count as pending, and now await publishing
+    assert db.pending_story_for(42) is None
+    assert [r["id"] for r in db.answered_stories()] == [sid]
+
+    assert db.set_story_status(sid, "published") is True
+    assert db.get_story(sid)["published_at"] is not None
+    assert db.answered_stories() == []
+    assert db.set_story_status(9999, "dismissed") is False  # missing id
+
+
+def test_story_edit_and_manual_authoring():
+    # editing an unanswered ask authors it (moves asked -> answered)
+    sid = db.add_story("2026-07-21", 5, ask_message_id=None)
+    assert db.get_story(sid)["status"] == "asked"
+    assert db.set_story_text(sid, "  admin-written  ") is True
+    s = db.get_story(sid)
+    assert s["status"] == "answered" and s["text"] == "admin-written"
+    assert [r["id"] for r in db.answered_stories()] == [sid]
+    # editing a published story tweaks text but keeps it published
+    db.set_story_status(sid, "published")
+    assert db.set_story_text(sid, "post-publish tweak") is True
+    assert db.get_story(sid)["status"] == "published"
+    assert db.set_story_text(999, "x") is False  # missing id
+
+
+def test_photo_dates():
+    db.upsert_photo("2026-07-20", 1, "/a.jpg")
+    db.upsert_photo("2026-07-20", 2, "/b.jpg")
+    db.upsert_photo("2026-07-21", 1, "/c.jpg")
+    assert db.photo_dates() == ["2026-07-20", "2026-07-21"]
+
+
+def test_story_reply_match_prefers_exact_ask():
+    # same author asked about two different days
+    a = db.add_story("2026-07-20", 7, ask_message_id=100)
+    b = db.add_story("2026-07-21", 7, ask_message_id=200)
+    # a reply to the older ask resolves to that story, not just the latest
+    assert db.story_by_ask_message(7, 100)["id"] == a
+    assert db.story_by_ask_message(7, 200)["id"] == b
+    # the bare fallback returns the most recent open ask
+    assert db.pending_story_for(7)["id"] == b

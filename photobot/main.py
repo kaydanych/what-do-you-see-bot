@@ -175,6 +175,12 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("pollclose", adm.cmd_pollclose))
     app.add_handler(CommandHandler("approve", adm.cmd_approve))
     app.add_handler(CommandHandler("dismiss", adm.cmd_dismiss))
+    app.add_handler(CommandHandler("photos", adm.cmd_photos))
+    app.add_handler(CommandHandler("askstory", adm.cmd_askstory))
+    app.add_handler(CommandHandler("stories", adm.cmd_stories))
+    app.add_handler(CommandHandler("editstory", adm.cmd_editstory))
+    app.add_handler(CommandHandler("publishstory", adm.cmd_publishstory))
+    app.add_handler(CommandHandler("dismissstory", adm.cmd_dismissstory))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))
     app.add_handler(CommandHandler("version", adm.cmd_version))
 

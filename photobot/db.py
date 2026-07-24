@@ -93,6 +93,20 @@ CREATE TABLE IF NOT EXISTS poll_messages (
     message_id INTEGER NOT NULL,
     PRIMARY KEY (poll_id, tg_id)
 );
+-- "Story of the day": the admin asks the author of one past photo why they
+-- chose it; the author's reply is captured here and later published (with their
+-- name — this is opt-in deanonymization) to that day's submitters.
+CREATE TABLE IF NOT EXISTS stories (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    date           TEXT NOT NULL,        -- the submission day the photo is from
+    tg_id          INTEGER NOT NULL,     -- the photo's author
+    ask_message_id INTEGER,              -- the bot's ask message, for reply matching
+    text           TEXT,                 -- the author's story (NULL until answered)
+    status         TEXT NOT NULL DEFAULT 'asked',  -- asked|answered|published|dismissed
+    asked_at       TEXT,
+    answered_at    TEXT,
+    published_at   TEXT
+);
 """
 
 
@@ -539,6 +553,91 @@ def set_suggestion_status(sid: int, status: str) -> bool:
 def pending_suggestions() -> list[sqlite3.Row]:
     return _exec(
         "SELECT * FROM suggestions WHERE status='pending' ORDER BY id"
+    ).fetchall()
+
+
+# --- stories ("story of the day") --------------------------------------------
+
+def add_story(date: str, tg_id: int, ask_message_id: int | None) -> int:
+    cur = _exec(
+        "INSERT INTO stories(date, tg_id, ask_message_id, status, asked_at) "
+        "VALUES(?, ?, ?, 'asked', ?)",
+        (date, tg_id, ask_message_id, _now()),
+    )
+    return cur.lastrowid
+
+
+def get_story(sid: int) -> sqlite3.Row | None:
+    return _exec("SELECT * FROM stories WHERE id=?", (sid,)).fetchone()
+
+
+def pending_story_for(tg_id: int) -> sqlite3.Row | None:
+    """The author's most recent unanswered ask, if any (for reply capture)."""
+    return _exec(
+        "SELECT * FROM stories WHERE tg_id=? AND status='asked' "
+        "ORDER BY id DESC LIMIT 1",
+        (tg_id,),
+    ).fetchone()
+
+
+def story_by_ask_message(tg_id: int, ask_message_id: int) -> sqlite3.Row | None:
+    """An unanswered ask matched by the exact message the user replied to —
+    unambiguous even if the author was asked about several days."""
+    return _exec(
+        "SELECT * FROM stories WHERE tg_id=? AND ask_message_id=? "
+        "AND status='asked' ORDER BY id DESC LIMIT 1",
+        (tg_id, ask_message_id),
+    ).fetchone()
+
+
+def set_story_answer(sid: int, text: str) -> None:
+    _exec(
+        "UPDATE stories SET text=?, status='answered', answered_at=? WHERE id=?",
+        (text.strip(), _now(), sid),
+    )
+
+
+def set_story_text(sid: int, text: str) -> bool:
+    """Admin edit of a story's text. Writing text onto an unanswered ask counts
+    as answering it (lets the admin author a story by hand). Returns False if
+    the story id doesn't exist."""
+    s = get_story(sid)
+    if s is None:
+        return False
+    if s["status"] == "asked":
+        _exec(
+            "UPDATE stories SET text=?, status='answered', answered_at=? WHERE id=?",
+            (text.strip(), _now(), sid),
+        )
+    else:
+        _exec("UPDATE stories SET text=? WHERE id=?", (text.strip(), sid))
+    return True
+
+
+def photo_dates() -> list[str]:
+    """Distinct dates that have at least one non-excluded submission."""
+    rows = _exec(
+        "SELECT DISTINCT date FROM photos WHERE excluded=0 ORDER BY date"
+    ).fetchall()
+    return [r["date"] for r in rows]
+
+
+def set_story_status(sid: int, status: str) -> bool:
+    ts_col = {"published": "published_at"}.get(status)
+    if ts_col:
+        cur = _exec(
+            f"UPDATE stories SET status=?, {ts_col}=? WHERE id=?",
+            (status, _now(), sid),
+        )
+    else:
+        cur = _exec("UPDATE stories SET status=? WHERE id=?", (status, sid))
+    return cur.rowcount > 0
+
+
+def answered_stories() -> list[sqlite3.Row]:
+    """Stories the author has answered but the admin hasn't published yet."""
+    return _exec(
+        "SELECT * FROM stories WHERE status='answered' ORDER BY id"
     ).fetchall()
 
 

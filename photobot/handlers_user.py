@@ -173,6 +173,21 @@ async def _store_suggestion(
     await update.message.reply_text(t(db.get_user_lang(u.id), "SUGGEST_THANKS"))
 
 
+async def _store_story(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, story, text: str
+) -> None:
+    u = update.effective_user
+    db.set_story_answer(story["id"], text)
+    await jobs.notify_admins(
+        context,
+        f"💬 Story #{story['id']} — {u.first_name} @{u.username or '—'} "
+        f"(id {u.id}), photo from {story['date']}:\n«{text}»\n\n"
+        f"/publishstory {story['id']} — send to that day's submitters\n"
+        f"/dismissstory {story['id']} — discard",
+    )
+    await update.message.reply_text(t(db.get_user_lang(u.id), "STORY_THANKS"))
+
+
 async def cmd_feedback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _register(update, context):
         return
@@ -356,6 +371,24 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await _store_suggestion(update, context, text)
             return
+    # A pending "story of the day" ask? Capture the author's reply. Prefer an
+    # exact reply-to match (unambiguous if they were asked about several days),
+    # then fall back to their latest open ask.
+    if update.message.text:
+        uid = update.effective_user.id
+        reply = update.message.reply_to_message
+        story = (
+            db.story_by_ask_message(uid, reply.message_id)
+            if reply is not None
+            else None
+        )
+        if story is None:
+            story = db.pending_story_for(uid)
+        if story is not None:
+            text = update.message.text.strip()
+            if text:
+                await _store_story(update, context, story, text)
+                return
     lang = db.get_user_lang(update.effective_user.id)
     status, _ = day_status()
     if status == "open":

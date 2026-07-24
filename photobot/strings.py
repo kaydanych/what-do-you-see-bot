@@ -85,6 +85,19 @@ STRINGS = {
             "Отличная идея, спасибо! Передал организатору — если она станет "
             "заданием дня, укажу твоё авторство 💡"
         ),
+        "STORY_ASK": (
+            "💬 Твоё фото выбрали для «Истории дня»!\n\n"
+            "Задание тогда было:\n{prompt}\n\n"
+            "Расскажи в паре предложений, почему ты выбрал(а) именно этот кадр? "
+            "Просто напиши ответ сюда — я поделюсь твоей историей с остальными "
+            "участниками того дня 🙂 (не хочешь — можно не отвечать)"
+        ),
+        "STORY_THANKS": "Спасибо, что поделился(ась)! Передал организатору 💬",
+        "STORY_PUBLISH": (
+            "💬 История дня\n\n"
+            "📅 {date} — задание было:\n{prompt}\n\n"
+            "{name} рассказывает, почему выбрал(а) это фото:\n«{text}»"
+        ),
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
         "HELP": (
@@ -179,6 +192,19 @@ STRINGS = {
         "SUGGEST_THANKS": (
             "Great idea, thanks! Passed it to the organizer — if it becomes the "
             "challenge of the day, you'll get the credit 💡"
+        ),
+        "STORY_ASK": (
+            "💬 Your photo was picked for the “Story of the day”!\n\n"
+            "The challenge back then was:\n{prompt}\n\n"
+            "Tell me in a sentence or two why you chose this particular shot. "
+            "Just write your answer here — I'll share your story with the others "
+            "who took part that day 🙂 (no pressure — you can skip it)"
+        ),
+        "STORY_THANKS": "Thanks for sharing! Passed it on to the organizer 💬",
+        "STORY_PUBLISH": (
+            "💬 Story of the day\n\n"
+            "📅 {date} — the challenge was:\n{prompt}\n\n"
+            "{name} on why they chose this photo:\n«{text}»"
         ),
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
