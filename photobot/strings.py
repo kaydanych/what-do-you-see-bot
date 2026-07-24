@@ -66,6 +66,7 @@ STRINGS = {
             "🖼 Сегодня ты участвовал(а) в одиночку — но коллаж всё равно твой! До завтра!"
         ),
         "COLLAGE_ZOOM": "📎 Полное разрешение — открой, чтобы рассмотреть каждое фото",
+        "COLLAGE_STREAK": "\n\n🔥 Серия: {days} дн. подряд — так держать!",
         "TODAY_SUBMITTED": "\n\nТвоё фото уже у меня ✅ (можешь прислать другое — заменю)",
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
         "RATE_THANKS": "Спасибо за оценку! {emoji}",
@@ -160,6 +161,7 @@ STRINGS = {
             "See you tomorrow!"
         ),
         "COLLAGE_ZOOM": "📎 Full resolution — open it to look closely at every photo",
+        "COLLAGE_STREAK": "\n\n🔥 {days}-day streak — keep it going!",
         "TODAY_SUBMITTED": "\n\nYour photo is in ✅ (send another one to replace it)",
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
         "RATE_THANKS": "Thanks for rating! {emoji}",

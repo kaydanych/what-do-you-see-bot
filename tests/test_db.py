@@ -93,3 +93,29 @@ def test_settings_defaults_and_override():
     assert db.get_setting("prompt_time") == "09:00"
     db.set_setting("prompt_time", "10:30")
     assert db.get_setting("prompt_time") == "10:30"
+
+
+def test_streaks_for_counts_today_before_collage_marked():
+    # Three prior collage days already went out; today's is still in flight.
+    for d in ("2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"):
+        db.create_day(d, None)
+    for d in ("2026-07-20", "2026-07-21", "2026-07-22"):
+        db.set_day_field(d, "collage_sent_at", f"{d}T21:00:00")
+    # Ann submitted every day incl. today; Bob missed 07-21 (breaks his streak).
+    for d in ("2026-07-20", "2026-07-21", "2026-07-22", "2026-07-23"):
+        db.upsert_photo(d, 1, f"/x/{d}-ann.jpg")
+    for d in ("2026-07-20", "2026-07-22", "2026-07-23"):
+        db.upsert_photo(d, 2, f"/x/{d}-bob.jpg")
+
+    streaks = db.streaks_for("2026-07-23")
+    assert streaks[1] == 4          # counts today even though it's unmarked
+    assert streaks[2] == 2          # 07-22 + 07-23, broken by missing 07-21
+
+
+def test_streaks_for_excludes_non_submitters():
+    db.create_day("2026-07-22", None)
+    db.set_day_field("2026-07-22", "collage_sent_at", "2026-07-22T21:00:00")
+    db.create_day("2026-07-23", None)
+    db.upsert_photo("2026-07-23", 1, "/x/a.jpg")
+    streaks = db.streaks_for("2026-07-23")
+    assert streaks == {1: 1}        # only actual submitters appear

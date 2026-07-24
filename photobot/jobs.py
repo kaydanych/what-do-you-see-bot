@@ -470,11 +470,16 @@ async def send_collage(
     def lang_of(uid: int) -> str:
         return "ru" if db.get_user_lang(uid) == "ru" else "en"
 
-    def caption_for(uid: int) -> str:
+    def caption_for(uid: int, streak: int = 0) -> str:
         lang = db.get_user_lang(uid)
         if n == 1:
-            return t(lang, "COLLAGE_CAPTION_SOLO")
-        return t(lang, "COLLAGE_CAPTION", n=n)
+            base = t(lang, "COLLAGE_CAPTION_SOLO")
+        else:
+            base = t(lang, "COLLAGE_CAPTION", n=n)
+        # A streak of 1 is just "showed up today" — only celebrate from 2 up.
+        if streak >= 2:
+            base += t(lang, "COLLAGE_STREAK", days=streak)
+        return base
 
     fname = f"collage_{date}.jpg"
 
@@ -493,6 +498,7 @@ async def send_collage(
         return f"preview sent ({n} photos)"
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
+    streaks = db.streaks_for(date)
     langs = {lang_of(uid) for uid in recipients}
     # Render every needed collage up front (off the event loop) so each user then
     # gets the photo and the hi-res file back-to-back, not minutes apart.
@@ -507,16 +513,17 @@ async def send_collage(
     sent = 0
     for uid in recipients:
         lang = lang_of(uid)
+        caption = caption_for(uid, streaks.get(uid, 0))
         try:
             # Upload each collage to Telegram once, then reuse its file_id.
             if lang in photo_ids:
                 msg = await context.bot.send_photo(
-                    uid, photo_ids[lang], caption=caption_for(uid), reply_markup=keyboard
+                    uid, photo_ids[lang], caption=caption, reply_markup=keyboard
                 )
             else:
                 with open(photo_path[lang], "rb") as f:
                     msg = await context.bot.send_photo(
-                        uid, f, caption=caption_for(uid), reply_markup=keyboard
+                        uid, f, caption=caption, reply_markup=keyboard
                     )
                 photo_ids[lang] = msg.photo[-1].file_id
             # remembered so every copy's tallies can be updated on each vote

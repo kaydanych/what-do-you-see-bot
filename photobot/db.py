@@ -560,3 +560,24 @@ def participation() -> dict[int, set[str]]:
     for r in rows:
         out.setdefault(r["tg_id"], set()).add(r["date"])
     return out
+
+
+def streaks_for(date: str) -> dict[int, int]:
+    """tg_id -> consecutive collage days (ending at `date`) the user submitted for.
+
+    Same definition as the /stats board, computed once for every submitter. When
+    `date`'s collage is still going out its `collage_sent_at` isn't set yet, so it
+    is missing from collage_dates(); it's appended here since today counts."""
+    days = collage_dates()
+    if not days or days[-1] != date:
+        days = days + [date]
+    out: dict[int, int] = {}
+    for tg_id, user_dates in participation().items():
+        streak = 0
+        for d in reversed(days):
+            if d not in user_dates:
+                break
+            streak += 1
+        if streak:
+            out[tg_id] = streak
+    return out
