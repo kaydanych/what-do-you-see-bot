@@ -18,7 +18,7 @@ log = logging.getLogger(__name__)
 ADMIN_HELP = """Admin commands
 
 📊 Overview
-/broadcast <text> — message all active users
+/broadcast <text> — message all active users (EN | RU; EN is the fallback)
 /errors — last log lines
 /stats — participation leaderboard + collage ratings
 /status — today at a glance
@@ -771,12 +771,23 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # split off just the "/broadcast" token so line breaks in the rest of the
     # message survive (context.args + " ".join would collapse them)
     parts = (update.message.text or "").split(None, 1)
-    text = parts[1].strip() if len(parts) > 1 else ""
-    if not text:
-        await update.message.reply_text("Usage: /broadcast <text>")
+    body = parts[1].strip() if len(parts) > 1 else ""
+    if not body:
+        await update.message.reply_text(
+            "Usage: /broadcast <text>   (or  <English> | <Russian>)\n"
+            "Russian users see the RU half; English text is the fallback."
+        )
         return
-    sent, failed = await jobs.send_to_users(context, db.active_user_ids(), text)
-    await update.message.reply_text(f"Broadcast: sent {sent}, failed {failed}.")
+    en, ru = parse_prompt_line(body)
+
+    def text_for(uid: int) -> str:
+        return ru if (ru and db.get_user_lang(uid) == "ru") else en
+
+    sent, failed = await jobs.send_per_user(context, db.active_user_ids(), text_for)
+    note = f"Broadcast: sent {sent}, failed {failed}.\n«{en}»" + (
+        f"\n🇷🇺 «{ru}»" if ru else ""
+    )
+    await update.message.reply_text(note)
 
 
 def _parse_poll_id(arg: str) -> int | None:
