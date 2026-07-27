@@ -141,6 +141,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("suggest_prompt", usr.cmd_suggest))
     app.add_handler(CallbackQueryHandler(usr.on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
+    app.add_handler(CallbackQueryHandler(usr.on_story_like, pattern=r"^story:"))
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
 
     # admin commands

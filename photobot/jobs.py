@@ -31,6 +31,19 @@ def rating_keyboard(date: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([row])
 
 
+STORY_HEART = "❤️"
+
+
+def story_keyboard(sid: int) -> InlineKeyboardMarkup:
+    """A single heart under a published story; the count rides in the label,
+    so the keyboard works in every language. Tapping again takes it back."""
+    n = db.story_like_count(sid)
+    label = f"{STORY_HEART} {n}" if n else STORY_HEART
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(label, callback_data=f"story:{sid}")]]
+    )
+
+
 def rating_summary(date: str) -> str | None:
     """'🔥 5 · 👍 2' or None if nobody rated yet."""
     counts = db.rating_counts(date)

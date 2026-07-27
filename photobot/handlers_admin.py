@@ -74,7 +74,7 @@ deadline while unsent.
 /askstory random — pick a random past photo and ask its author
 /stories — stories the authors have answered, waiting to publish
 /editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
-/publishstory <id> — send that photo + story to everyone in the game (reveals the author's name)
+/publishstory <id> — send that photo + story to everyone in the game (reveals the author's name); it carries a ❤️ button with a live shared tally
 /publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
 /dismissstory <id> — discard a story"""
 
@@ -667,7 +667,11 @@ async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         )
         try:
             with open(photo["file_path"], "rb") as f:
-                await context.bot.send_photo(uid, f, caption=caption)
+                out = await context.bot.send_photo(
+                    uid, f, caption=caption, reply_markup=jobs.story_keyboard(sid)
+                )
+            # remembered so one reader's ❤️ refreshes the tally on every copy
+            db.add_story_message(sid, uid, out.message_id)
             sent += 1
         except Forbidden:
             db.set_user_status(uid, "inactive")

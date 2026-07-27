@@ -94,6 +94,8 @@ STRINGS = {
             "(не хочешь — можно не отвечать)"
         ),
         "STORY_THANKS": "Спасибо, что поделился(ась)! Передал организатору 💬",
+        "STORY_LIKED": "Твоё ❤️ засчитано — автор увидит!",
+        "STORY_UNLIKED": "Ок, убрал ❤️",
         "STORY_PUBLISH": (
             "💬 История дня\n\n"
             "📅 {date} — задание было:\n{prompt}\n\n"
@@ -203,6 +205,8 @@ STRINGS = {
             "(no pressure — you can skip it)"
         ),
         "STORY_THANKS": "Thanks for sharing! Passed it on to the organizer 💬",
+        "STORY_LIKED": "Your ❤️ is in — the author will see it!",
+        "STORY_UNLIKED": "OK, took your ❤️ back",
         "STORY_PUBLISH": (
             "💬 Story of the day\n\n"
             "📅 {date} — the challenge was:\n{prompt}\n\n"

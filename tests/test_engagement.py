@@ -34,6 +34,41 @@ def test_rating_keyboard_shows_tallies():
     assert jobs.rating_summary("2026-07-15") is None
 
 
+def test_story_heart_toggles():
+    sid = db.add_story("2026-07-26", 42, ask_message_id=None)
+    assert db.toggle_story_like(sid, 1) is True
+    assert db.toggle_story_like(sid, 2) is True
+    assert db.story_like_count(sid) == 2
+    # tapping again takes the heart back rather than stacking a second one
+    assert db.toggle_story_like(sid, 1) is False
+    assert db.story_like_count(sid) == 1
+    assert db.story_likers(sid) == [2]
+    assert db.toggle_story_like(sid, 1) is True
+    assert db.story_like_count(sid) == 2
+
+
+def test_story_keyboard_shows_the_tally():
+    sid = db.add_story("2026-07-26", 42, ask_message_id=None)
+    row = jobs.story_keyboard(sid).inline_keyboard[0]
+    assert [b.text for b in row] == ["❤️"]  # bare heart before anyone taps
+    assert row[0].callback_data == f"story:{sid}"
+    db.toggle_story_like(sid, 1)
+    db.toggle_story_like(sid, 2)
+    assert jobs.story_keyboard(sid).inline_keyboard[0][0].text == "❤️ 2"
+    # hearts are per story, never pooled across them
+    other = db.add_story("2026-07-25", 43, ask_message_id=None)
+    assert jobs.story_keyboard(other).inline_keyboard[0][0].text == "❤️"
+
+
+def test_story_messages_remembered_per_user():
+    sid = db.add_story("2026-07-26", 42, ask_message_id=None)
+    db.add_story_message(sid, 1, 100)
+    db.add_story_message(sid, 2, 200)
+    db.add_story_message(sid, 1, 101)  # a republish replaces the old copy
+    rows = {r["tg_id"]: r["message_id"] for r in db.story_messages_for(sid)}
+    assert rows == {1: 101, 2: 200}
+
+
 def test_collage_messages_remembered_per_user():
     db.add_collage_message("2026-07-16", 1, 100)
     db.add_collage_message("2026-07-16", 2, 200)

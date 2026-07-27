@@ -256,6 +256,33 @@ async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
 
+async def on_story_like(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """❤️ tap under a published story: toggle the like, refresh every copy."""
+    query = update.callback_query
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    try:
+        sid = int(query.data.split(":", 1)[1])
+    except (IndexError, ValueError):
+        await _answer(query)
+        return
+    if db.get_story(sid) is None:
+        await _answer(query)
+        return
+    liked = db.toggle_story_like(sid, u.id)
+    await _answer(query, t(lang, "STORY_LIKED" if liked else "STORY_UNLIKED"))
+    keyboard = jobs.story_keyboard(sid)
+    for row in db.story_messages_for(sid):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                reply_markup=keyboard,
+            )
+        except Exception:
+            log.debug("story heart update failed for %s/%s", row["tg_id"], sid)
+
+
 async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Up/down feedback-poll tap: store the vote, refresh tallies on every copy."""
     query = update.callback_query

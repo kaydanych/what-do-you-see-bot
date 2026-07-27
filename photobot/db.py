@@ -108,6 +108,20 @@ CREATE TABLE IF NOT EXISTS stories (
     answered_at    TEXT,
     published_at   TEXT
 );
+-- One ❤️ per reader per story, toggled off by tapping again.
+CREATE TABLE IF NOT EXISTS story_likes (
+    story_id INTEGER NOT NULL,
+    tg_id    INTEGER NOT NULL,
+    liked_at TEXT,
+    PRIMARY KEY (story_id, tg_id)
+);
+-- Every copy of a published story, so a tap can refresh the tally on all of them.
+CREATE TABLE IF NOT EXISTS story_messages (
+    story_id   INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (story_id, tg_id)
+);
 """
 
 
@@ -640,6 +654,52 @@ def set_story_status(sid: int, status: str) -> bool:
     else:
         cur = _exec("UPDATE stories SET status=? WHERE id=?", (status, sid))
     return cur.rowcount > 0
+
+
+def toggle_story_like(sid: int, tg_id: int) -> bool:
+    """Tap the heart: like if not liked yet, un-like if already liked.
+    Returns the new state (True = liked)."""
+    row = _exec(
+        "SELECT 1 FROM story_likes WHERE story_id=? AND tg_id=?", (sid, tg_id)
+    ).fetchone()
+    if row:
+        _exec(
+            "DELETE FROM story_likes WHERE story_id=? AND tg_id=?", (sid, tg_id)
+        )
+        return False
+    _exec(
+        "INSERT INTO story_likes(story_id, tg_id, liked_at) VALUES(?, ?, ?)",
+        (sid, tg_id, _now()),
+    )
+    return True
+
+
+def story_like_count(sid: int) -> int:
+    row = _exec(
+        "SELECT COUNT(*) AS n FROM story_likes WHERE story_id=?", (sid,)
+    ).fetchone()
+    return row["n"]
+
+
+def story_likers(sid: int) -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM story_likes WHERE story_id=? ORDER BY liked_at", (sid,)
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def add_story_message(sid: int, tg_id: int, message_id: int) -> None:
+    _exec(
+        "INSERT INTO story_messages(story_id, tg_id, message_id) VALUES(?, ?, ?) "
+        "ON CONFLICT(story_id, tg_id) DO UPDATE SET message_id=excluded.message_id",
+        (sid, tg_id, message_id),
+    )
+
+
+def story_messages_for(sid: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM story_messages WHERE story_id=?", (sid,)
+    ).fetchall()
 
 
 def answered_stories() -> list[sqlite3.Row]:

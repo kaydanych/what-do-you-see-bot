@@ -71,7 +71,7 @@ approved idea ships with the suggester's name baked in.
 - 🔥 **Streaks** — your run of consecutive days rides along in the caption
 - 💬 **Story of the day** — the bot can ask one author why they chose their
   photo, and publish the answer to the whole group — in both languages if you
-  pair it with a translation
+  pair it with a translation, with a ❤️ readers can leave on it
 - 📊 **Polls** — ad-hoc 👍/👎 questions to the whole group, with a live tally
 - 🧹 **Moderation first** — nothing is published until you've looked at it
 - 🌍 **Per-user language** — everyone reads the bot, and gets the collage, in
