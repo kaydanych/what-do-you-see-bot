@@ -4,7 +4,7 @@
 # deploys them: container restart for code-only changes, full rebuild when
 # requirements.txt / Dockerfile / docker-compose.yml changed.
 # Exits silently when already up to date, so frequent scheduling is cheap.
-# One-time setup: see "Updating on the NAS" in README.md.
+# One-time setup: see docs/deploy-synology.md.
 
 PATH=/usr/local/bin:/usr/bin:/bin:/sbin
 ROOT=/volume1/docker/photobot

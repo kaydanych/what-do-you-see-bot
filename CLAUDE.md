@@ -1,7 +1,8 @@
 # photobot — daily photo-prompt Telegram bot
 
 Bot: @what_do_you_see_bot · GitHub: kaydanych/what-do-you-see-bot ·
-Full design in `DESIGN.md`, ops/setup in `README.md`.
+Full design in `DESIGN.md`, ops/setup in `README.md`, NAS runbook in
+`docs/deploy-synology.md`.
 
 ## Commands
 ```bash
