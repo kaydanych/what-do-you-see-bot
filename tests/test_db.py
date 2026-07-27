@@ -158,6 +158,19 @@ def test_story_edit_and_manual_authoring():
     assert db.set_story_text(999, "x") is False  # missing id
 
 
+def test_story_translation_replaces_both_halves():
+    sid = db.add_story("2026-07-26", 8, ask_message_id=None)
+    db.set_story_answer(sid, "почему я выбрал этот кадр")
+    assert db.get_story(sid)["text_ru"] is None  # a raw reply has no translation
+    assert db.set_story_text(sid, "why I chose it", "  почему я выбрал  ") is True
+    s = db.get_story(sid)
+    assert (s["text"], s["text_ru"]) == ("why I chose it", "почему я выбрал")
+    # an edit without a RU half drops the old translation rather than keeping
+    # a stale one paired with new English
+    db.set_story_text(sid, "why I chose it, take two")
+    assert db.get_story(sid)["text_ru"] is None
+
+
 def test_photo_dates():
     db.upsert_photo("2026-07-20", 1, "/a.jpg")
     db.upsert_photo("2026-07-20", 2, "/b.jpg")

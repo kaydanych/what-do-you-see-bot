@@ -102,6 +102,7 @@ CREATE TABLE IF NOT EXISTS stories (
     tg_id          INTEGER NOT NULL,     -- the photo's author
     ask_message_id INTEGER,              -- the bot's ask message, for reply matching
     text           TEXT,                 -- the author's story (NULL until answered)
+    text_ru        TEXT,                 -- optional RU version (admin-added translation)
     status         TEXT NOT NULL DEFAULT 'asked',  -- asked|answered|published|dismissed
     asked_at       TEXT,
     answered_at    TEXT,
@@ -134,6 +135,7 @@ def init(path: Path | str | None = None) -> None:
                 ("collage_nudges", "INTEGER NOT NULL DEFAULT 0"),
                 ("preview_sent_at", "TEXT"),
             ],
+            "stories": [("text_ru", "TEXT")],
         }
         for table, columns in migrations.items():
             existing = {
@@ -597,20 +599,26 @@ def set_story_answer(sid: int, text: str) -> None:
     )
 
 
-def set_story_text(sid: int, text: str) -> bool:
-    """Admin edit of a story's text. Writing text onto an unanswered ask counts
-    as answering it (lets the admin author a story by hand). Returns False if
-    the story id doesn't exist."""
+def set_story_text(sid: int, text: str, text_ru: str | None = None) -> bool:
+    """Admin edit of a story's text. `text` is the primary/English version and
+    `text_ru` the optional translation — an edit always replaces both, so
+    editing without a RU half clears any earlier translation. Writing text onto
+    an unanswered ask counts as answering it (lets the admin author a story by
+    hand). Returns False if the story id doesn't exist."""
     s = get_story(sid)
     if s is None:
         return False
+    ru = text_ru.strip() if text_ru else None
     if s["status"] == "asked":
         _exec(
-            "UPDATE stories SET text=?, status='answered', answered_at=? WHERE id=?",
-            (text.strip(), _now(), sid),
+            "UPDATE stories SET text=?, text_ru=?, status='answered', answered_at=? "
+            "WHERE id=?",
+            (text.strip(), ru, _now(), sid),
         )
     else:
-        _exec("UPDATE stories SET text=? WHERE id=?", (text.strip(), sid))
+        _exec(
+            "UPDATE stories SET text=?, text_ru=? WHERE id=?", (text.strip(), ru, sid)
+        )
     return True
 
 

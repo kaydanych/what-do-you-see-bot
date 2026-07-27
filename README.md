@@ -70,7 +70,8 @@ approved idea ships with the suggester's name baked in.
   across every copy
 - 🔥 **Streaks** — your run of consecutive days rides along in the caption
 - 💬 **Story of the day** — the bot can ask one author why they chose their
-  photo, and publish the answer back to that day's players
+  photo, and publish the answer back to that day's players — in both languages
+  if you pair it with a translation
 - 📊 **Polls** — ad-hoc 👍/👎 questions to the whole group, with a live tally
 - 🧹 **Moderation first** — nothing is published until you've looked at it
 - 🌍 **Per-user language** — everyone reads the bot, and gets the collage, in

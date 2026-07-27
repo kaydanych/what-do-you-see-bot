@@ -33,6 +33,20 @@ def test_prompt_text_english_is_primary():
     assert jobs.prompt_text(p2, None) == "No translation"
 
 
+def test_story_text_picks_the_reader_language():
+    sid = db.add_story("2026-07-26", 8, ask_message_id=None)
+    db.set_story_text(sid, "why I chose it", "почему я выбрал")
+    s = db.get_story(sid)
+    assert jobs.story_text(s, "ru") == "почему я выбрал"
+    assert jobs.story_text(s, "en") == "why I chose it"
+    # an untranslated story goes to everyone as captured
+    sid2 = db.add_story("2026-07-25", 9, ask_message_id=None)
+    db.set_story_answer(sid2, "raw reply")
+    s2 = db.get_story(sid2)
+    assert jobs.story_text(s2, "ru") == "raw reply"
+    assert jobs.story_text(s2, None) == "raw reply"
+
+
 def test_setru_updates_existing_prompt():
     pid = db.add_prompt("Send a photo of pink", 1)
     assert db.set_prompt_ru(pid, "Пришли фото розового") is True

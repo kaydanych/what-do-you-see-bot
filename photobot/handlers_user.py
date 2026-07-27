@@ -183,6 +183,7 @@ async def _store_story(
         f"💬 Story #{story['id']} — {u.first_name} @{u.username or '—'} "
         f"(id {u.id}), photo from {story['date']}:\n«{text}»\n\n"
         f"/publishstory {story['id']} — send to that day's submitters\n"
+        f"/editstory {story['id']} <EN> | <RU> — edit / add a translation\n"
         f"/dismissstory {story['id']} — discard",
     )
     await update.message.reply_text(t(db.get_user_lang(u.id), "STORY_THANKS"))

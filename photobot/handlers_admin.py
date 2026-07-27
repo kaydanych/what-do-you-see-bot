@@ -73,7 +73,7 @@ deadline while unsent.
 /askstory [YYYY-MM-DD] N — DM author N their photo and ask why they chose it
 /askstory random — pick a random past photo and ask its author
 /stories — stories the authors have answered, waiting to publish
-/editstory <id> <text> — edit a story's text (or write one yourself)
+/editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
 /publishstory <id> — send that photo + story to the day's submitters (reveals the author's name)
 /dismissstory <id> — discard a story"""
 
@@ -559,9 +559,11 @@ async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         u = db.get_user(s["tg_id"])
         name = u["first_name"] if u else str(s["tg_id"])
         blocks.append(
-            f"💬 #{s['id']} — {name}, photo from {s['date']}:\n«{s['text']}»\n"
-            f"/publishstory {s['id']} — send to that day's submitters\n"
-            f"/editstory {s['id']} <text> — edit · /dismissstory {s['id']} — discard"
+            f"💬 #{s['id']} — {name}, photo from {s['date']}:\n«{s['text']}»"
+            + (f"\n🇷🇺 «{s['text_ru']}»" if s["text_ru"] else "")
+            + f"\n/publishstory {s['id']} — send to that day's submitters\n"
+            f"/editstory {s['id']} <EN> | <RU> — edit / translate · "
+            f"/dismissstory {s['id']} — discard"
         )
     await update.effective_message.reply_text("\n\n".join(blocks))
 
@@ -569,22 +571,29 @@ async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 @admin_only
 async def cmd_editstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/editstory <id> <text> — replace a story's text (also lets you author one
-    by hand for an author who hasn't replied)."""
+    by hand for an author who hasn't replied). Takes the 'EN | RU' pipe format,
+    so you can pair the author's original with your translation; each reader
+    then gets the half in their language."""
     msg = update.effective_message
     parts = (msg.text or "").split(None, 2)
     if len(parts) < 3 or not parts[1].isdigit():
-        await msg.reply_text("Usage: /editstory <id> <new story text>")
+        await msg.reply_text(
+            "Usage: /editstory <id> <new story text>\n"
+            "       /editstory <id> <English> | <Russian>"
+        )
         return
     sid = int(parts[1])
-    if not db.set_story_text(sid, parts[2].strip()):
+    en, ru = parse_prompt_line(parts[2].strip())
+    if not db.set_story_text(sid, en, ru):
         await msg.reply_text(f"No story #{sid}.")
         return
     s = db.get_story(sid)
     u = db.get_user(s["tg_id"])
     name = u["first_name"] if u else str(s["tg_id"])
     await msg.reply_text(
-        f"✏️ Story #{sid} ({name}, {s['date']}) updated:\n«{s['text']}»\n"
-        f"/publishstory {sid} to send it."
+        f"✏️ Story #{sid} ({name}, {s['date']}) updated:\n«{s['text']}»"
+        + (f"\n🇷🇺 «{s['text_ru']}»" if s["text_ru"] else "")
+        + f"\n/publishstory {sid} to send it."
     )
 
 
@@ -636,8 +645,8 @@ async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         lang = db.get_user_lang(uid)
         ptext = jobs.prompt_text(prompt, lang) if prompt else "—"
         caption = t(
-            lang, "STORY_PUBLISH", name=name, text=s["text"], prompt=ptext,
-            date=s["date"],
+            lang, "STORY_PUBLISH", name=name, text=jobs.story_text(s, lang),
+            prompt=ptext, date=s["date"],
         )
         try:
             with open(photo["file_path"], "rb") as f:
@@ -650,7 +659,14 @@ async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             log.exception("publishstory %s to %s failed", sid, uid)
             failed += 1
     db.set_story_status(sid, "published")
-    await msg.reply_text(f"💬 Story #{sid} published — sent {sent}, failed {failed}.")
+    note = f"💬 Story #{sid} published — sent {sent}, failed {failed}."
+    note += (
+        "\nRussian readers got the RU version."
+        if s["text_ru"]
+        else f"\nEveryone got the same text — /editstory {sid} <EN> | <RU> next time "
+        "to give each language its own."
+    )
+    await msg.reply_text(note)
 
 
 @admin_only

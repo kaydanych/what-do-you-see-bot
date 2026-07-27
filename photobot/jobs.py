@@ -93,6 +93,14 @@ def prompt_text(prompt, lang: str | None) -> str:
     return prompt["text"]
 
 
+def story_text(story, lang: str | None) -> str:
+    """A story in the reader's language; the captured/English text is the
+    primary and the fallback when there is no translation."""
+    if lang == "ru" and story["text_ru"]:
+        return story["text_ru"]
+    return story["text"]
+
+
 def now_local() -> datetime:
     return datetime.now(config.TZ)
 
