@@ -89,8 +89,9 @@ STRINGS = {
             "💬 Твоё фото выбрали для «Истории дня»!\n\n"
             "Задание тогда было:\n{prompt}\n\n"
             "Расскажи в паре предложений, почему ты выбрал(а) именно этот кадр? "
-            "Просто напиши ответ сюда — я поделюсь твоей историей с остальными "
-            "участниками того дня 🙂 (не хочешь — можно не отвечать)"
+            "Просто напиши ответ сюда — я поделюсь твоей историей и этим фото "
+            "со всеми участниками игры, под твоим именем 🙂 "
+            "(не хочешь — можно не отвечать)"
         ),
         "STORY_THANKS": "Спасибо, что поделился(ась)! Передал организатору 💬",
         "STORY_PUBLISH": (
@@ -197,8 +198,9 @@ STRINGS = {
             "💬 Your photo was picked for the “Story of the day”!\n\n"
             "The challenge back then was:\n{prompt}\n\n"
             "Tell me in a sentence or two why you chose this particular shot. "
-            "Just write your answer here — I'll share your story with the others "
-            "who took part that day 🙂 (no pressure — you can skip it)"
+            "Just write your answer here — I'll share your story and this photo "
+            "with everyone in the game, under your name 🙂 "
+            "(no pressure — you can skip it)"
         ),
         "STORY_THANKS": "Thanks for sharing! Passed it on to the organizer 💬",
         "STORY_PUBLISH": (

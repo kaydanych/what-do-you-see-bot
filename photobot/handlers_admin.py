@@ -74,7 +74,8 @@ deadline while unsent.
 /askstory random — pick a random past photo and ask its author
 /stories — stories the authors have answered, waiting to publish
 /editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
-/publishstory <id> — send that photo + story to the day's submitters (reveals the author's name)
+/publishstory <id> — send that photo + story to everyone in the game (reveals the author's name)
+/publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
 /dismissstory <id> — discard a story"""
 
 
@@ -561,7 +562,8 @@ async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         blocks.append(
             f"💬 #{s['id']} — {name}, photo from {s['date']}:\n«{s['text']}»"
             + (f"\n🇷🇺 «{s['text_ru']}»" if s["text_ru"] else "")
-            + f"\n/publishstory {s['id']} — send to that day's submitters\n"
+            + f"\n/publishstory {s['id']} — send to everyone "
+            f"(add ' day' for that day's submitters only)\n"
             f"/editstory {s['id']} <EN> | <RU> — edit / translate · "
             f"/dismissstory {s['id']} — discard"
         )
@@ -597,18 +599,35 @@ async def cmd_editstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
 
 
+def story_recipients(date: str, scope: str) -> list[int]:
+    """Who gets a published story: everyone in the game, or — with the 'day'
+    scope — only that day's submitters, the audience the collage went to.
+    Admins are always included."""
+    base = db.submitter_ids(date) if scope == "day" else db.active_user_ids()
+    return list(dict.fromkeys(base + list(config.ADMIN_IDS)))
+
+
 @admin_only
 async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send the photo + the author's story to everyone who submitted that day
-    (admins always included). This is where the author's name is revealed."""
+    """Send the photo + the author's story to every active user, or just that
+    day's submitters with /publishstory <id> day (admins always included).
+    This is where the author's name is revealed."""
     msg = update.effective_message
+    usage = (
+        "Usage: /publishstory <id>       — everyone in the game\n"
+        "       /publishstory <id> day   — only that day's submitters"
+    )
     if not context.args:
-        await msg.reply_text("Usage: /publishstory <id> (see /stories)")
+        await msg.reply_text(f"{usage}\n(ids from /stories)")
         return
     try:
         sid = int(context.args[0])
     except ValueError:
-        await msg.reply_text("Usage: /publishstory <id>")
+        await msg.reply_text(usage)
+        return
+    scope = context.args[1].lower() if len(context.args) > 1 else "all"
+    if scope not in ("all", "day"):
+        await msg.reply_text(f"Unknown audience {context.args[1]!r}.\n{usage}")
         return
     s = db.get_story(sid)
     if s is None:
@@ -637,9 +656,7 @@ async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     name = author["first_name"] if author else str(s["tg_id"])
     day = db.get_day(s["date"])
     prompt = db.get_prompt(day["prompt_id"]) if day and day["prompt_id"] else None
-    recipients = list(
-        dict.fromkeys(db.submitter_ids(s["date"]) + list(config.ADMIN_IDS))
-    )
+    recipients = story_recipients(s["date"], scope)
     sent = failed = 0
     for uid in recipients:
         lang = db.get_user_lang(uid)
@@ -659,7 +676,8 @@ async def cmd_publishstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             log.exception("publishstory %s to %s failed", sid, uid)
             failed += 1
     db.set_story_status(sid, "published")
-    note = f"💬 Story #{sid} published — sent {sent}, failed {failed}."
+    who = f"{s['date']}'s submitters" if scope == "day" else "everyone in the game"
+    note = f"💬 Story #{sid} published to {who} — sent {sent}, failed {failed}."
     note += (
         "\nRussian readers got the RU version."
         if s["text_ru"]

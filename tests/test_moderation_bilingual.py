@@ -1,8 +1,8 @@
 import pytest
 from PIL import Image
 
-from photobot import collage, db, jobs
-from photobot.handlers_admin import parse_prompt_line
+from photobot import collage, config, db, jobs
+from photobot.handlers_admin import parse_prompt_line, story_recipients
 from tests.test_collage import make_photos
 
 
@@ -45,6 +45,22 @@ def test_story_text_picks_the_reader_language():
     s2 = db.get_story(sid2)
     assert jobs.story_text(s2, "ru") == "raw reply"
     assert jobs.story_text(s2, None) == "raw reply"
+
+
+def test_story_recipients_scopes(monkeypatch):
+    monkeypatch.setattr(config, "ADMIN_IDS", (99,))
+    for uid in (1, 2, 3):
+        db.upsert_user(uid, f"U{uid}", None)
+    db.upsert_photo("2026-07-26", 1, "/a.jpg")
+    db.upsert_photo("2026-07-26", 2, "/b.jpg")  # user 3 sat that day out
+    # the admin rides along on both scopes, even without an account of their own
+    assert sorted(story_recipients("2026-07-26", "all")) == [1, 2, 3, 99]
+    assert sorted(story_recipients("2026-07-26", "day")) == [1, 2, 99]
+    # a user who left is dropped from the wide send but keeps the narrow one,
+    # matching who the collage reached that day
+    db.set_user_status(2, "inactive")
+    assert sorted(story_recipients("2026-07-26", "all")) == [1, 3, 99]
+    assert sorted(story_recipients("2026-07-26", "day")) == [1, 2, 99]
 
 
 def test_setru_updates_existing_prompt():

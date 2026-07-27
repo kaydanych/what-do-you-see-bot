@@ -182,7 +182,8 @@ async def _store_story(
         context,
         f"💬 Story #{story['id']} — {u.first_name} @{u.username or '—'} "
         f"(id {u.id}), photo from {story['date']}:\n«{text}»\n\n"
-        f"/publishstory {story['id']} — send to that day's submitters\n"
+        f"/publishstory {story['id']} — send to everyone "
+        f"(add ' day' for that day's submitters only)\n"
         f"/editstory {story['id']} <EN> | <RU> — edit / add a translation\n"
         f"/dismissstory {story['id']} — discard",
     )
