@@ -39,8 +39,10 @@ ordinary day, and the small pleasure of seeing what nine other people found.
 | **09:00** | A prompt from the curated bilingual library goes out to everyone at once |
 | all day | People send photos. A new one replaces your old one, right up to the deadline |
 | **19:00** | A gentle nudge — only to whoever hasn't played yet |
-| **21:00** | Deadline. Late photos are politely turned away. You get a numbered contact sheet |
-| your call | You moderate (`/exclude 3`, `/preview`) and press send. **The collage never goes out on its own** |
+| **21:00** | Deadline. Late photos are politely turned away. You get a numbered contact sheet; two or three trusted players get the finished collage and one question: anything wrong? |
+| 👍 | One of them says no and it publishes itself. Most evenings end here |
+| every 10 min | Nobody tapped? It rolls to the next two or three |
+| your call | Or someone bans it — then you moderate (`/exclude 3`, `/preview`) and press send |
 | 🎉 | Everyone who played gets the card, their streak, and a row of rating buttons |
 
 Times are Europe/Berlin, live in the DB, and change from the admin chat with
@@ -73,7 +75,11 @@ approved idea ships with the suggester's name baked in.
   photo, and publish the answer to the whole group — in both languages if you
   pair it with a translation, with a ❤️ readers can leave on it
 - 📊 **Polls** — ad-hoc 👍/👎 questions to the whole group, with a live tally
-- 🧹 **Moderation first** — nothing is published until you've looked at it
+- 👀 **Proofing** — hand the nightly check to a few trusted players instead of
+  being the bottleneck: one 👍 publishes, a double-confirmed 🚫 goes to fresh
+  eyes, two park it for you. The bar for banning is written down, narrow, and
+  ends with "when in doubt, publish"
+- 🧹 **Moderation first** — nothing is published until somebody has looked at it
 - 🌍 **Per-user language** — everyone reads the bot, and gets the collage, in
   EN or RU
 - 🏠 **Yours** — long polling means no open ports; the photos never leave your
@@ -113,6 +119,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 | `/status` | today at a glance — prompt sent? who's in? collage pending? |
 | `/exclude N` · `/include N` · `/ban N` | moderate the contact sheet |
 | `/preview` · `/forcecollage` | see it, then send it |
+| `/proofers` · `/proofer @who` · `/proofing` | who checks the collage for you, and how |
 | `/delcollage` | unsend a collage everywhere (Telegram allows 48 h) and reset the day |
 | `/settimes` · `/times` | move the day's clock |
 | `/stats` · `/users` · `/feedback_all` | who's playing, what they think |

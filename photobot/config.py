@@ -34,6 +34,12 @@ DEFAULT_SETTINGS = {
     "final_reminder_min": "10",  # last-call reminder this many minutes before deadline
     "project_start_date": "2026-07-12",  # day 1; collage shows "Day N" counting from here
     "deployed_commit": "",  # last build announced to admins (set on startup)
+    # Collage proofing: trusted users see the collage before anyone else and one
+    # 👍 publishes it. All of these are editable at runtime via /proofing.
+    "proof_enabled": "1",
+    "proof_batch": "3",          # how many people are asked per round
+    "proof_round_min": "10",     # silence for this long -> ask the next batch
+    "proof_ban_quorum": "2",     # this many bans park the day on the admin
 }
 
 MAX_PHOTO_SIDE = 2560      # stored photos are downscaled to this

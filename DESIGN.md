@@ -45,9 +45,10 @@ prompt; the cycle repeats.
 | 09:00 | Pick a random **unused** prompt from the library, mark it used, send to all active users. A `days` row is created for today. |
 | 09:00–21:00 | Users submit photos. One photo per user per day; **re-sending replaces** the previous one (message: «Заменил твоё фото на новое»). |
 | 19:00 | Gentle reminder — only to users who haven't submitted yet. Skipped if the user already submitted. |
-| 21:00 | Deadline. Late photos get a polite rejection and are not stored. **Admin gets a numbered contact sheet** (every photo once, submission order) + a number→name list for moderation. |
+| 21:00 | Deadline. Late photos get a polite rejection and are not stored. **Admin gets a numbered contact sheet** (every photo once, submission order) + a number→name list for moderation. 2–3 **proofers** (§4a) get the finished collage itself, with 👍/🚫. |
 | after 21:00 | Review: `/exclude N` drops a photo, `/ban N` drops it and kicks the author, `/include N` undoes, `/preview` dry-runs. Numbers never shift. Excluded users don't receive the collage. |
-| admin's call | The collage is **never sent automatically** — the admin reviews and runs `/forcecollage` (reminder nudges to the admin 10/30/60 min after the deadline while unsent). It is then generated from the remaining photos and sent **only to that day's submitters** (admin always included). `/delcollage [date]` deletes a sent collage from every chat (≤48 h, Telegram limit) and resets the day for a re-send. |
+| a proofer's 👍 | The collage goes out immediately — this is where almost every evening ends. |
+| admin's call | With proofing off (or held, or unanswered), the collage is **never sent automatically** — the admin reviews and runs `/forcecollage` (reminder nudges to the admin 10/30/60 min after the deadline while unsent). It is then generated from the remaining photos and sent **only to that day's submitters** (admin always included). `/delcollage [date]` deletes a sent collage from every chat (≤48 h, Telegram limit) and resets the day for a re-send. |
 
 Implementation: a single tick job runs every minute and compares the clock
 against the DB-stored times and the day's state — this is what makes runtime
@@ -61,6 +62,64 @@ reboots and DSM updates therefore can't silently kill a day.
 **Zero/one submissions:** 0 photos → no collage, admin gets a note. 1 photo →
 that user gets their own photo back as a 2×2 mini-collage with a friendly note
 (still fun, keeps the ritual).
+
+## 4a. Collage proofing (delegated pre-publish check)
+
+Waiting for the admin every single night is the bottleneck the rest of the day
+doesn't have. So a small **trusted list** sees the collage before anyone else
+and, in the overwhelming majority of cases, waves it through.
+
+**Who is asked.** Users flagged with `/proofer`. At the deadline a batch
+(default 3) is drawn preferring **people who submitted that day** — they receive
+that collage anyway, so nobody ends up seeing a day they weren't part of — and
+within each half, whoever was asked longest ago. Being *asked* advances the
+rotation, answered or not, so duty doesn't pile onto the reliable few.
+
+**No warning shot.** There is no heads-up message: the collage simply arrives
+at the deadline asking whether anything is wrong. Silence rolls to the next
+batch every 10 minutes, which handles "wasn't looking at my phone" better than
+a reminder would.
+
+**What they see.** The finished collage exactly as it would be published — no
+numbers, no names, no contact sheet. They're answering "is anything wrong with
+this?", not doing photo-by-photo moderation; picking out *which* photo is the
+admin's job and needs the numbered sheet the admin already has.
+
+**The two taps.** 👍 publishes. 🚫 swaps the keyboard for
+`🚫 Really ban` / `✅ Changed my mind, all good` and only the second tap counts —
+a ban stops the evening for everyone and must not be one stray thumb.
+
+**Resolution.**
+
+| Situation | Outcome |
+|---|---|
+| Any 👍, no ban on record | Published immediately; the admin is told who approved it |
+| 👍 from the *same* batch as a ban | Recorded, but doesn't publish — the flag stands |
+| 👍 from a *later* batch (one that was shown "someone flagged this") | Published; the admin gets the flagger's note either way |
+| 1 ban | Rolls to a fresh batch — one person flagging is a reason to look again, not a veto |
+| 2 bans (`quorum`) | Parked on the admin, with both notes: `/exclude N` + `/forcecollage`, or `/forcecollage` as is |
+| A batch stays silent for 10 min (`round`) | Next batch |
+| The list runs out | With an open ban → parked on the admin. Otherwise → the old admin-only flow, nudges and all |
+
+Once the day is decided, whoever answered keeps their copy captioned with the
+outcome, and the question is **deleted** from everyone who hadn't got round to
+it — no stale buttons, no "who already decided this?".
+
+**What "inappropriate" means** is deliberately narrow and lives in
+`strings.py` as `PROOF_RULES` (both languages), sent when someone is added to
+the list; the nightly ask carries a one-line reminder rather than repeating it.
+The bar: only an obvious violation of the shared social space — nudity, someone
+identifiable in a private moment, graphic violence, hate symbols, exposed
+personal data, a shot meant to humiliate. Explicitly *not* grounds: bad taste,
+bad photography, boring, off prompt, or "I don't like it". Closing line:
+**when in doubt, publish.**
+
+A confirmed ban asks for an optional free-text note ("what's wrong, and which
+photo?") which is forwarded to the admin as-is.
+
+Everything runs on the same one-minute tick, so a NAS reboot mid-evening
+catches up, and every knob (`batch`, `round`, `quorum`, on/off) lives in the DB
+and is changed from the admin chat via `/proofing`.
 
 ## 5. Users & onboarding
 
@@ -157,6 +216,8 @@ happens in the bot chat:
 | `/forcecollage [date]` | Build & send the collage after review (this is the ONLY way it goes out) |
 | `/delcollage [date]` | Delete a sent collage from every chat (≤48 h) and reset the day |
 | `/preview` | Build the collage and send it **only to admin** — dry run |
+| `/proofers`, `/proofer <id\|@user>` | The trusted proofing list; adding someone DMs them the guidelines (§4a) |
+| `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
 | `/broadcast <text>` | Message all active users |
 | `/kick <id|@username>`, `/unkick` | Remove/restore a user |
@@ -212,7 +273,7 @@ copy new code, rebuild container; DB and photos live in the volume and survive.
 
 ```
 users   (tg_id PK, first_name, username, status TEXT       -- active|inactive|kicked
-         , joined_at, kicked_at)
+         , joined_at, kicked_at, lang, proofer INT, last_proofed_on)
 prompts (id PK, text, source TEXT DEFAULT 'library', used_on DATE NULL,
          added_by, added_at)
 days    (date PK, prompt_id FK, prompt_sent_at, collage_sent_at,
@@ -223,6 +284,9 @@ ratings (date, tg_id, value TEXT, rated_at,                  -- fire|like|meh
          PRIMARY KEY (date, tg_id))                          -- revote = UPSERT
 collage_messages (date, tg_id, message_id,                   -- per-user copy of the
          PRIMARY KEY (date, tg_id))                          -- collage, for live tallies
+proof_asks (date, tg_id, round_no, message_id, asked_at,     -- pre-publish check (§4a);
+         value TEXT, note, voted_at,                         -- value: approve|ban,
+         PRIMARY KEY (date, tg_id))                          -- NULL until they decide
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```

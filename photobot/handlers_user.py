@@ -316,6 +316,82 @@ async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             log.debug("poll keyboard update failed for %s/%s", row["tg_id"], poll_id)
 
 
+async def on_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The pre-publish check: 👍 publishes the collage there and then, 🚫 asks
+    for a confirming second tap and only then holds the day."""
+    query = update.callback_query
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        await _answer(query)
+        return
+    _, date, action = parts
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+
+    ask = db.get_proof_ask(date, uid)
+    if ask is None:
+        await _answer(query, t(lang, "PROOF_NOT_YOURS"))
+        return
+
+    day = db.get_day(date)
+    settled = day is None or day["collage_sent_at"] or day["proof_result"]
+    if action == "hold":
+        # arming the confirmation is harmless even on a settled day; the
+        # confirming tap below is where the guard actually matters
+        await _answer(query, t(lang, "PROOF_CONFIRM"))
+        await query.edit_message_reply_markup(jobs.proof_confirm_keyboard(date, lang))
+        return
+    if action == "back":
+        await _answer(query)
+        await query.edit_message_reply_markup(jobs.proof_keyboard(date, lang))
+        return
+    if settled or ask["value"]:
+        await _answer(query, t(lang, "PROOF_DONE"))
+        return
+
+    if action == "ok":
+        # A hold beats an approval from the same batch: those people were
+        # answering the plain question, so the flag stands and fresh eyes get
+        # it. An approval from a *later* batch — one that was explicitly shown
+        # "someone flagged this, do you see it too?" — does publish, because one
+        # person flagging is a reason to look again, not a veto.
+        flagged_round = max(
+            (r["round_no"] for r in db.proof_bans(date)), default=0
+        )
+        db.set_proof_vote(date, uid, "approve")
+        if flagged_round >= ask["round_no"]:
+            await _answer(query, t(lang, "PROOF_THANKS_OK_FLAGGED"))
+            await jobs.close_proof_asks(context, date, "PROOF_CLOSED_NOTED", only=uid)
+            return
+        await _answer(query, t(lang, "PROOF_THANKS_OK"))
+        await jobs.proof_publish(context, date, uid)
+        return
+
+    if action == "holdyes":
+        db.set_proof_vote(date, uid, "ban")
+        await _answer(query, t(lang, "PROOF_THANKS_HOLD"))
+        await jobs.close_proof_asks(context, date, "PROOF_CLOSED_NOTED", only=uid)
+        context.user_data["awaiting"] = f"proofnote:{date}"
+        await context.bot.send_message(uid, t(lang, "PROOF_NOTE_ASK"))
+        await jobs.proof_after_hold(context, date)
+        return
+
+    await _answer(query)
+
+
+async def _store_proof_note(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, date: str, text: str
+) -> None:
+    u = update.effective_user
+    db.set_proof_note(date, u.id, text)
+    await jobs.notify_admins(
+        context,
+        f"🚫 {date} — {u.first_name} @{u.username or '—'} (id {u.id}) held the "
+        f"collage:\n«{text}»",
+    )
+    await update.message.reply_text(t(db.get_user_lang(u.id), "PROOF_NOTE_THANKS"))
+
+
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Photo messages and image documents — the actual submissions."""
     if not await _register(update, context):
@@ -390,13 +466,18 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     if not await _register(update, context):
         return
-    # A tapped /feedback or /suggest_prompt left us waiting for the actual text.
+    # A tapped /feedback or /suggest_prompt, or a held collage, left us waiting
+    # for the actual text.
     awaiting = context.user_data.pop("awaiting", None)
     if awaiting and update.message.text:
         text = update.message.text.strip()
         if text:
             if awaiting == "feedback":
                 await _store_feedback(update, context, text)
+            elif awaiting.startswith("proofnote:"):
+                await _store_proof_note(
+                    update, context, awaiting.split(":", 1)[1], text
+                )
             else:
                 await _store_suggestion(update, context, text)
             return

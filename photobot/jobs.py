@@ -220,9 +220,8 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     ):
         await send_reminders(context, today)
 
-    final_at = datetime.combine(
-        now.date(), t["deadline"], tzinfo=config.TZ
-    ) - timedelta(minutes=t["final"])
+    deadline_dt = datetime.combine(now.date(), t["deadline"], tzinfo=config.TZ)
+    final_at = deadline_dt - timedelta(minutes=t["final"])
     if not day["final_reminder_sent_at"] and final_at <= now and nowt < t["deadline"]:
         await send_final_reminders(context, today)
 
@@ -235,8 +234,11 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
         db.set_day_field(today, "collage_nudges", nudges_passed(now, t["deadline"]))
         day = db.get_day(today)
 
+    # Proofing owns the collage while it's running; only once it's resolved (or
+    # switched off, or nobody answered) do the admin nudges take over.
     if day["moderation_sent_at"] and not day["collage_sent_at"]:
-        await nudge_admins(context, today, now, t["deadline"], day)
+        if not await run_proofing(context, today, now, day):
+            await nudge_admins(context, today, now, t["deadline"], day)
 
 
 NUDGE_MINUTES = (10, 30, 60)
@@ -269,6 +271,247 @@ async def nudge_admins(
         f"({n} photo(s)) is still waiting for your review.\n"
         "/preview to check it, /forcecollage to send.",
     )
+
+
+# --- collage proofing ---------------------------------------------------------
+#
+# A few trusted users see the collage before anyone else. One 👍 publishes it —
+# which is where almost every evening ends. A 🚫 (double-confirmed, so a stray
+# thumb can't stop the day) freezes the auto-publish and passes the collage to
+# fresh eyes; two 🚫 park it on the admin, who decides whether to /exclude a
+# photo or send it as is.
+
+
+def proof_cfg() -> dict:
+    return {
+        "enabled": db.get_setting("proof_enabled") == "1",
+        "batch": int(db.get_setting("proof_batch")),
+        "round_min": int(db.get_setting("proof_round_min")),
+        "quorum": int(db.get_setting("proof_ban_quorum")),
+    }
+
+
+def proof_keyboard(date: str, lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t(lang, "PROOF_BTN_OK"), callback_data=f"proof:{date}:ok"
+                ),
+                InlineKeyboardButton(
+                    t(lang, "PROOF_BTN_HOLD"), callback_data=f"proof:{date}:hold"
+                ),
+            ]
+        ]
+    )
+
+
+def proof_confirm_keyboard(date: str, lang: str | None) -> InlineKeyboardMarkup:
+    """The second tap. A hold stops the evening for everyone, so it must never
+    be one stray thumb on a phone in a pocket."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t(lang, "PROOF_BTN_HOLD_YES"),
+                    callback_data=f"proof:{date}:holdyes",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    t(lang, "PROOF_BTN_BACK"), callback_data=f"proof:{date}:back"
+                )
+            ],
+        ]
+    )
+
+
+def pick_proof_batch(date: str, n: int) -> list[int]:
+    """The next n proofers to ask. People who submitted today come first — they
+    receive that collage anyway, so nobody ends up seeing a day they weren't
+    part of — and within each half it's whoever was asked longest ago. Anyone
+    already asked for this date is skipped."""
+    asked = {r["tg_id"] for r in db.proof_asks_for(date)}
+    submitters = set(db.submitter_ids(date))
+    ranked = db.proofer_ids()
+    ordered = [u for u in ranked if u in submitters] + [
+        u for u in ranked if u not in submitters
+    ]
+    return [u for u in ordered if u not in asked][:n]
+
+
+async def send_proof_round(
+    context: ContextTypes.DEFAULT_TYPE, date: str, round_no: int
+) -> int:
+    """Send the check to one batch, unannounced — the collage arriving *is* the
+    ask. Returns how many people actually received it."""
+    batch = [r["tg_id"] for r in db.proof_asks_for(date, round_no)]
+    if not batch:
+        batch = pick_proof_batch(date, proof_cfg()["batch"])
+        for uid in batch:
+            db.add_proof_ask(date, uid, round_no)
+    if not batch:
+        return 0
+
+    n = len(db.photos_for(date))
+    key = "PROOF_ASK" if round_no == 1 else "PROOF_ASK_FLAGGED"
+    # Render once per language and reuse Telegram's file_id — a render per
+    # proofer would block the NAS for seconds each.
+    paths = {lang: await render_collage(date, lang, stem="proof")
+             for lang in {lang_of(uid) for uid in batch}}
+    file_ids: dict[str, str] = {}
+    sent = 0
+    for uid in batch:
+        lang = db.get_user_lang(uid)
+        caption = t(lang, key, n=n)
+        keyboard = proof_keyboard(date, lang)
+        try:
+            if lang_of(uid) in file_ids:
+                msg = await context.bot.send_photo(
+                    uid, file_ids[lang_of(uid)], caption=caption,
+                    reply_markup=keyboard,
+                )
+            else:
+                with open(paths[lang_of(uid)], "rb") as f:
+                    msg = await context.bot.send_photo(
+                        uid, f, caption=caption, reply_markup=keyboard
+                    )
+                file_ids[lang_of(uid)] = msg.photo[-1].file_id
+            db.set_proof_message(date, uid, msg.message_id)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            db.delete_proof_ask(date, uid)
+        except Exception:
+            log.exception("proof ask to %s failed", uid)
+            db.delete_proof_ask(date, uid)
+
+    if sent:
+        db.set_day_field(date, "proof_round", round_no)
+        db.set_day_field(
+            date, "proof_asked_at", now_local().isoformat(timespec="seconds")
+        )
+    return sent
+
+
+async def close_proof_asks(
+    context: ContextTypes.DEFAULT_TYPE, date: str, key: str, only: int | None = None
+) -> None:
+    """Retire the preview messages once the day is decided. Whoever answered
+    keeps their copy, captioned with the outcome; for everyone who didn't get
+    round to it the question is deleted outright, so nobody is left staring at
+    a decision that was made without them."""
+    for r in db.proof_asks_for(date):
+        if not r["message_id"] or (only is not None and r["tg_id"] != only):
+            continue
+        try:
+            if r["value"]:
+                await context.bot.edit_message_caption(
+                    chat_id=r["tg_id"],
+                    message_id=r["message_id"],
+                    caption=t(db.get_user_lang(r["tg_id"]), key),
+                    # an *empty* keyboard is what clears the buttons;
+                    # reply_markup=None is omitted from the request and leaves
+                    # them in place
+                    reply_markup=InlineKeyboardMarkup([]),
+                )
+            else:
+                await context.bot.delete_message(r["tg_id"], r["message_id"])
+                db.set_proof_message(date, r["tg_id"], None)
+        except Exception:
+            log.debug("closing proof ask for %s/%s failed", r["tg_id"], date)
+
+
+def proof_hold_lines(date: str) -> list[str]:
+    """Who held the collage and why — for the admin handover message."""
+    lines = []
+    for r in db.proof_bans(date):
+        u = db.get_user(r["tg_id"])
+        who = u["first_name"] if u else f"id {r['tg_id']}"
+        lines.append(f"🚫 {who}: {r['note'] or '(no note yet)'}")
+    return lines
+
+
+async def proof_publish(
+    context: ContextTypes.DEFAULT_TYPE, date: str, approver_id: int
+) -> None:
+    """One 👍 with no hold on record — the collage goes out to everyone."""
+    db.set_day_field(date, "proof_result", "approved")
+    await close_proof_asks(context, date, "PROOF_CLOSED_PUBLISHED")
+    u = db.get_user(approver_id)
+    who = f"{u['first_name']} (id {approver_id})" if u else f"id {approver_id}"
+    await notify_admins(context, f"👍 {date}: {who} approved the collage — publishing.")
+    await send_collage(context, date)
+
+
+async def proof_hold(
+    context: ContextTypes.DEFAULT_TYPE, date: str, reason: str
+) -> None:
+    """Enough holds — the day is the admin's call now."""
+    db.set_day_field(date, "proof_result", "held")
+    await close_proof_asks(context, date, "PROOF_CLOSED_HELD")
+    lines = [f"⏸ {date}: the collage is on hold ({reason})."]
+    lines += proof_hold_lines(date)
+    lines.append(
+        "Numbers match the contact sheet above (/photos to reprint them).\n"
+        "/exclude N to drop a photo, then /forcecollage — or /forcecollage "
+        "on its own to send it as is."
+    )
+    await notify_admins(context, "\n".join(lines))
+
+
+async def proof_exhausted(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
+    """Nobody left to ask. A day carrying an open hold is parked for review; a
+    day nobody answered just reverts to the old admin-only flow, nudges and all."""
+    if db.proof_bans(date):
+        await proof_hold(context, date, "nobody left to confirm the hold")
+        return
+    db.set_day_field(date, "proof_result", "exhausted")
+    await notify_admins(
+        context,
+        f"👀 {date}: nobody on the proofing list answered "
+        f"({len(db.proof_asks_for(date))} asked) — the collage is yours. "
+        "/preview, /forcecollage.",
+    )
+
+
+async def _proof_next_round(
+    context: ContextTypes.DEFAULT_TYPE, date: str, round_no: int
+) -> bool:
+    """Ask the next batch; when there's nobody left, hand the day back."""
+    if await send_proof_round(context, date, round_no):
+        return True
+    await proof_exhausted(context, date)
+    return False
+
+
+async def proof_after_hold(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
+    """A hold just landed. Two of them park the day on the admin; a single one
+    goes to fresh eyes — one person flagging is a reason to look again, not a veto."""
+    cfg = proof_cfg()
+    if db.proof_counts(date).get("ban", 0) >= cfg["quorum"]:
+        await proof_hold(context, date, f"{cfg['quorum']} holds")
+        return
+    day = db.get_day(date)
+    await _proof_next_round(context, date, (day["proof_round"] or 1) + 1)
+
+
+async def run_proofing(
+    context: ContextTypes.DEFAULT_TYPE, date: str, now: datetime, day
+) -> bool:
+    """Drive the check from the tick. Returns True while proofing owns the day,
+    which is what keeps the admin nudges quiet."""
+    cfg = proof_cfg()
+    if not cfg["enabled"] or day["proof_result"] or day["collage_sent_at"]:
+        return False
+    if not db.proofer_ids() or not db.photos_for(date):
+        return False
+    if not day["proof_round"] or not day["proof_asked_at"]:
+        return await _proof_next_round(context, date, 1)
+    asked_at = datetime.fromisoformat(day["proof_asked_at"])
+    if now - asked_at < timedelta(minutes=cfg["round_min"]):
+        return True  # this round still has time to answer
+    return await _proof_next_round(context, date, day["proof_round"] + 1)
 
 
 async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
@@ -422,6 +665,56 @@ async def send_moderation(context: ContextTypes.DEFAULT_TYPE, date: str) -> None
             log.exception("moderation send to admin %s failed", admin_id)
 
 
+def _render_collage(
+    date: str, lang: str, *, hires: bool = False, stem: str = "collage"
+) -> Path:
+    """Render the day's collage card to disk. Same mosaic in every language —
+    only the header/footer text differs, hence the shared date-derived seed."""
+    paths = [Path(p["file_path"]) for p in db.photos_for(date)]
+    prompt_en = prompt_ru = None
+    day = db.get_day(date)
+    if day and day["prompt_id"]:
+        prompt = db.get_prompt(day["prompt_id"])
+        if prompt:
+            prompt_en, prompt_ru = prompt["text"], prompt["text_ru"]
+    suffix = "_hires" if hires else ""
+    out = day_dir(date) / f"{stem}{suffix}_{lang}.jpg"
+    extra = (
+        dict(
+            scale=config.COLLAGE_HIRES_SCALE,
+            max_side=config.COLLAGE_HIRES_MAX_SIDE,
+            quality=config.COLLAGE_HIRES_QUALITY,
+        )
+        if hires
+        else {}
+    )
+    collage.build_collage(
+        paths,
+        out,
+        prompt=(prompt_ru or prompt_en) if lang == "ru" else prompt_en,
+        on_date=date,
+        day_number=day_number(date),
+        lang=lang,
+        seed=hash(date) & 0x7FFFFFFF,
+        **extra,
+    )
+    return out
+
+
+async def render_collage(
+    date: str, lang: str, *, hires: bool = False, stem: str = "collage"
+) -> Path:
+    """Render a collage off the event loop. Pillow is CPU-bound and a big hi-res
+    canvas takes many seconds on the NAS — running it inline froze the whole bot
+    (rating taps timed out). asyncio.to_thread keeps it responsive."""
+    return await asyncio.to_thread(_render_collage, date, lang, hires=hires, stem=stem)
+
+
+def lang_of(uid: int) -> str:
+    """Collages exist in exactly two languages; anything else reads English."""
+    return "ru" if db.get_user_lang(uid) == "ru" else "en"
+
+
 async def send_collage(
     context: ContextTypes.DEFAULT_TYPE,
     date: str,
@@ -438,58 +731,15 @@ async def send_collage(
             await notify_admins(context, f"📭 {date}: no submissions, no collage.")
         return "no submissions"
 
-    paths = [Path(p["file_path"]) for p in photos]
     n = len(photos)
-
-    prompt_en = prompt_ru = None
-    day = db.get_day(date)
-    if day and day["prompt_id"]:
-        prompt = db.get_prompt(day["prompt_id"])
-        if prompt:
-            prompt_en, prompt_ru = prompt["text"], prompt["text_ru"]
-
-    # Same mosaic in every language, only the header/footer text differs.
-    seed = hash(date) & 0x7FFFFFFF
-    daynum = day_number(date)
 
     # Busy days: the compressed inline photo is too small to read, so attach a
     # zoomable hi-res file (a document) alongside it. Small days don't need it.
     attach_hires = n >= config.COLLAGE_HIRES_MIN_PHOTOS
-
-    def _build_sync(lang: str, hires: bool) -> Path:
-        stem = "collage_preview" if preview_to else "collage"
-        suffix = "_hires" if hires else ""
-        out = day_dir(date) / f"{stem}{suffix}_{lang}.jpg"
-        prompt_text = (prompt_ru or prompt_en) if lang == "ru" else prompt_en
-        extra = (
-            dict(
-                scale=config.COLLAGE_HIRES_SCALE,
-                max_side=config.COLLAGE_HIRES_MAX_SIDE,
-                quality=config.COLLAGE_HIRES_QUALITY,
-            )
-            if hires
-            else {}
-        )
-        collage.build_collage(
-            paths,
-            out,
-            prompt=prompt_text,
-            on_date=date,
-            day_number=daynum,
-            lang=lang,
-            seed=seed,
-            **extra,
-        )
-        return out
+    stem = "collage_preview" if preview_to else "collage"
 
     async def build(lang: str, *, hires: bool = False) -> Path:
-        """Render a collage off the event loop. Pillow is CPU-bound and a big
-        hi-res canvas takes many seconds on the NAS — running it inline froze the
-        whole bot (rating taps timed out). asyncio.to_thread keeps it responsive."""
-        return await asyncio.to_thread(_build_sync, lang, hires)
-
-    def lang_of(uid: int) -> str:
-        return "ru" if db.get_user_lang(uid) == "ru" else "en"
+        return await render_collage(date, lang, hires=hires, stem=stem)
 
     def caption_for(uid: int, streak: int = 0) -> str:
         lang = db.get_user_lang(uid)
@@ -570,5 +820,11 @@ async def send_collage(
     db.set_day_field(
         date, "collage_sent_at", now_local().isoformat(timespec="seconds")
     )
+    # Sent by hand (/forcecollage) while a check was still open — retire those
+    # buttons rather than leaving proofers with a decision that no longer exists.
+    day = db.get_day(date)
+    if day and not day["proof_result"] and db.proof_asks_for(date):
+        db.set_day_field(date, "proof_result", "forced")
+        await close_proof_asks(context, date, "PROOF_CLOSED_PUBLISHED")
     await notify_admins(context, f"🖼 {date}: collage from {n} photos sent to {sent}.")
     return f"sent to {sent}"

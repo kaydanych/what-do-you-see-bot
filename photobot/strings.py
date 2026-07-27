@@ -101,6 +101,84 @@ STRINGS = {
             "📅 {date} — задание было:\n{prompt}\n\n"
             "{name} рассказывает, почему выбрал(а) это фото:\n«{text}»"
         ),
+        # --- collage proofing (trusted users check the collage pre-publish) ---
+        "PROOF_RULES": (
+            "Что считается проблемой\n\n"
+            "Планка намеренно высокая. Это маленький круг друзей, и странное, "
+            "некрасивое, скучное или «не по заданию» фото — НЕ повод что-то "
+            "останавливать. Останавливай коллаж, только если фото очевидно "
+            "ломает общее пространство:\n\n"
+            "• обнажённость или сексуальный контент\n"
+            "• узнаваемый человек в личной или уязвимой ситуации, который явно "
+            "не соглашался это показывать\n"
+            "• настоящие кровь, травмы, насилие, жестокость к животным — крупно "
+            "и прямо\n"
+            "• символика ненависти или экстремизма, оскорбление в адрес "
+            "человека или группы\n"
+            "• чьи-то личные данные в кадре — документы, адрес, телефон, "
+            "скриншот личной переписки\n"
+            "• кадр, смысл которого — унизить конкретного узнаваемого "
+            "человека\n\n"
+            "Не повод: плохой вкус, плохое качество съёмки, скучный кадр, "
+            "алкоголь или сигареты, чёрный юмор, игнорирование задания или "
+            "просто «мне не нравится».\n\n"
+            "Сомневаешься — публикуй. Пусть лучше выйдет одно спорное фото, "
+            "чем мы начнём тихо цензурировать друг друга."
+        ),
+        "PROOF_ENROLLED": (
+            "👀 Теперь ты в числе тех, кто смотрит коллаж до публикации — "
+            "спасибо, что взял(а)ся!\n\n"
+            "Как это работает: в вечера, когда выпадет твоя очередь, сразу "
+            "после {deadline} я пришлю тебе коллаж дня — раньше, чем его "
+            "увидит кто-либо ещё. Если всё в порядке, одного 👍 достаточно, "
+            "чтобы он ушёл всем."
+        ),
+        "PROOF_ASK": (
+            "👀 ПРОВЕРКА КОЛЛАЖА — РЕШАЕШЬ ТЫ\n\n"
+            "Коллаж дня, фото: {n}. Его ещё никто не видел — он уйдёт всем, "
+            "как только ты нажмёшь 👍.\n\n"
+            "Бань, только если фото очевидно ломает наше общее пространство: "
+            "обнажённость или секс, узнаваемый человек в личном моменте, на "
+            "который он явно не соглашался, кровь и насилие крупным планом, "
+            "символика ненависти, чужие документы или адрес в кадре, кадр "
+            "ради унижения конкретного человека.\n\n"
+            "Некрасиво, скучно, плохо снято, не по заданию или просто не твой "
+            "вкус — не повод. Сомневаешься — публикуй."
+        ),
+        "PROOF_ASK_FLAGGED": (
+            "👀 ПРОВЕРКА КОЛЛАЖА — РЕШАЕШЬ ТЫ\n\n"
+            "Фото: {n}, ещё не опубликовано. Кто-то из дежурных решил, что "
+            "здесь что-то переходит границу — нужен свежий взгляд. Видишь то "
+            "же самое?\n\n"
+            "Планка та же: обнажённость или секс, узнаваемый человек в личном "
+            "моменте, кровь и насилие крупным планом, символика ненависти, "
+            "чужие документы или адрес в кадре, кадр ради унижения. Не повод: "
+            "некрасиво, скучно, не по заданию, не твой вкус. Сомневаешься — "
+            "публикуй."
+        ),
+        "PROOF_BTN_OK": "👍 Всё хорошо",
+        "PROOF_BTN_HOLD": "🚫 Забанить",
+        "PROOF_BTN_HOLD_YES": "🚫 Точно забанить",
+        "PROOF_BTN_BACK": "✅ Передумал(а), всё хорошо",
+        "PROOF_CONFIRM": "Точно? Это остановит сегодняшний коллаж для всех.",
+        "PROOF_THANKS_OK": "👍 Спасибо — отправляю всем!",
+        "PROOF_THANKS_OK_FLAGGED": (
+            "Спасибо, записал. Но кто-то уже остановил этот коллаж, так что "
+            "сейчас он никуда не уйдёт — его пересмотрят."
+        ),
+        "PROOF_THANKS_HOLD": "Понял — остановил. Спасибо, что заметил(а).",
+        "PROOF_NOTE_ASK": (
+            "Если хочешь — напиши парой слов, что именно не так и на каком "
+            "фото. Увидит только организатор. Не хочешь — просто не отвечай."
+        ),
+        "PROOF_NOTE_THANKS": "Передал организатору 🙏",
+        "PROOF_DONE": "Уже решено — спасибо всё равно!",
+        "PROOF_NOT_YOURS": "Сегодня эта проверка не за тобой 🙂",
+        "PROOF_CLOSED_PUBLISHED": "✅ Опубликовано — спасибо за проверку!",
+        "PROOF_CLOSED_HELD": (
+            "⏸ Остановлено — дальше решает организатор. Спасибо за проверку!"
+        ),
+        "PROOF_CLOSED_NOTED": "✔️ Записал — спасибо за проверку!",
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
         "HELP": (
@@ -212,6 +290,80 @@ STRINGS = {
             "📅 {date} — the challenge was:\n{prompt}\n\n"
             "{name} on why they chose this photo:\n«{text}»"
         ),
+        # --- collage proofing (trusted users check the collage pre-publish) ---
+        "PROOF_RULES": (
+            "What counts as a problem\n\n"
+            "The bar is high on purpose. This is a small circle of friends, and "
+            "a weird, ugly, boring or off-prompt photo is NOT a reason to hold "
+            "anything. Hold the collage only if a photo would obviously break "
+            "the social space we share:\n\n"
+            "• nudity or sexual content\n"
+            "• someone recognizable in a private or vulnerable moment who "
+            "clearly didn't agree to be shared\n"
+            "• real, graphic blood, injury, violence, cruelty to animals\n"
+            "• hateful or extremist symbols, or an insult aimed at a person "
+            "or a group\n"
+            "• someone's personal data left visible — documents, an address, a "
+            "phone number, a screenshot of a private chat\n"
+            "• a shot whose point is to humiliate an identifiable person\n\n"
+            "Not a reason to hold: bad taste, bad photography, a boring shot, "
+            "alcohol or cigarettes, dark humour, a photo that ignores the "
+            "prompt, or simply a photo you don't like.\n\n"
+            "When in doubt — publish. Better one questionable photo goes out "
+            "than us quietly censoring each other."
+        ),
+        "PROOF_ENROLLED": (
+            "👀 You're now one of the people who check the collage before it "
+            "goes out — thanks for taking this on!\n\n"
+            "How it works: on the evenings it's your turn, right after "
+            "{deadline} I'll send you the day's collage — before anyone else "
+            "has seen it. If nothing's wrong, one 👍 sends it to everyone."
+        ),
+        "PROOF_ASK": (
+            "👀 COLLAGE CHECK — YOUR CALL\n\n"
+            "Today's collage, {n} photo(s). Nobody has seen it yet — it goes "
+            "out to everyone the moment you tap 👍.\n\n"
+            "Ban it only if a photo would obviously break the space we share: "
+            "nudity or sex, someone recognizable in a private moment they "
+            "clearly didn't agree to share, graphic blood or violence, hate "
+            "symbols, someone's documents or address in the frame, a shot "
+            "meant to humiliate a real person.\n\n"
+            "Ugly, boring, badly shot, off-prompt or just not your taste — not "
+            "reasons. In doubt, publish."
+        ),
+        "PROOF_ASK_FLAGGED": (
+            "👀 COLLAGE CHECK — YOUR CALL\n\n"
+            "{n} photo(s), not published yet. Someone else on tonight's check "
+            "thought something here crosses a line — fresh eyes needed. Do you "
+            "see it too?\n\n"
+            "Same bar: nudity or sex, someone recognizable in a private "
+            "moment, graphic violence, hate symbols, exposed documents or an "
+            "address, a shot meant to humiliate. Not reasons: ugly, boring, "
+            "off-prompt, not your taste. In doubt, publish."
+        ),
+        "PROOF_BTN_OK": "👍 All good",
+        "PROOF_BTN_HOLD": "🚫 Ban",
+        "PROOF_BTN_HOLD_YES": "🚫 Really ban",
+        "PROOF_BTN_BACK": "✅ Changed my mind, all good",
+        "PROOF_CONFIRM": "Sure? This stops tonight's collage for everyone.",
+        "PROOF_THANKS_OK": "👍 Thanks — sending it out now!",
+        "PROOF_THANKS_OK_FLAGGED": (
+            "Thanks, noted. Someone else held this collage, so it isn't going "
+            "out on this tap — it's being looked at again."
+        ),
+        "PROOF_THANKS_HOLD": "Got it — on hold. Thank you for catching it.",
+        "PROOF_NOTE_ASK": (
+            "If you want: a couple of words on what's wrong and which photo. "
+            "Only the organizer sees it — or just ignore this."
+        ),
+        "PROOF_NOTE_THANKS": "Passed it on to the organizer 🙏",
+        "PROOF_DONE": "Already handled — thanks anyway!",
+        "PROOF_NOT_YOURS": "This check isn't yours tonight 🙂",
+        "PROOF_CLOSED_PUBLISHED": "✅ Published — thanks for checking!",
+        "PROOF_CLOSED_HELD": (
+            "⏸ On hold — the organizer takes it from here. Thanks for checking!"
+        ),
+        "PROOF_CLOSED_NOTED": "✔️ Noted — thanks for checking!",
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
         "HELP": (

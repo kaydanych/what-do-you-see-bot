@@ -56,9 +56,9 @@ ADMIN_HELP = """Admin commands
 /times — show schedule
 
 🖼 Collage & moderation
-At the deadline you get a numbered contact sheet; the collage is NEVER sent
-automatically — it waits for your review, with nudges 10/30/60 min after the
-deadline while unsent.
+At the deadline you get a numbered contact sheet. With proofing off the collage
+waits for you, with nudges 10/30/60 min after the deadline while unsent; with
+proofing on it goes out as soon as a proofer waves it through (see below).
 /ban N — drop photo N and kick its author
 /delcollage [YYYY-MM-DD] — delete a sent collage everywhere (Telegram allows this only within 48 h) and reset the day
 /exclude N — drop photo N from today's collage
@@ -67,6 +67,20 @@ deadline while unsent.
 /kick <id|@username> — remove a user
 /preview — collage dry-run, sent only to you
 /unkick <id|@username> — restore a user
+
+👀 Proofing (trusted users check the collage before it goes out)
+At the deadline the collage — no numbers, no names — goes to 2–3 proofers,
+unannounced, asking whether anything is wrong. One 👍 publishes it. A 🚫 (they
+confirm it twice) freezes the publish and rolls to a fresh batch; two 🚫 park
+the day on you with their notes — then /exclude N and /forcecollage, or
+/forcecollage as is. Silence rolls to the next batch every 10 min; when the
+list runs out you get the nudges, as before. Once the day is decided, the
+question is deleted from anyone who hadn't answered.
+/proofers — who's on the list and when they were last asked
+/proofer <id|@username> — add/remove someone (adding DMs them the guidelines)
+/proofing — settings + tonight's state
+/proofing batch=3 round=10 quorum=2 — tune it
+/proofing off — back to the admin-only flow
 
 💬 Story of the day (the photo + why the author chose it)
 /photos [YYYY-MM-DD] — numbered author list for a day (numbers = the contact sheet)
@@ -149,6 +163,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         ratings = jobs.rating_summary(today)
         if ratings:
             lines.append(f"Ratings: {ratings}")
+        proof = _proof_state_line(today, day)
+        if proof:
+            lines.append(proof)
     active = len(db.active_user_ids())
     lines.append(f"Active users: {active}")
     lines.append(f"Unused prompts: {db.count_unused_prompts()}")
@@ -425,6 +442,135 @@ async def cmd_include(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 @admin_only
 async def cmd_ban(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _moderate(update, context, "ban")
+
+
+# --- collage proofing ---------------------------------------------------------
+
+def _proof_state_line(date: str, day) -> str | None:
+    """Where tonight's delegated check stands, as one line for /status."""
+    asks = db.proof_asks_for(date)
+    if not asks and not day["proof_result"]:
+        return None
+    counts = db.proof_counts(date)
+    tally = f"{len(asks)} asked, 👍 {counts.get('approve', 0)}, 🚫 {counts.get('ban', 0)}"
+    state = {
+        "approved": "approved ✅",
+        "held": "on hold — your call ⏸",
+        "exhausted": "nobody answered — your call",
+        "forced": "you sent it yourself ✅",
+    }.get(day["proof_result"], f"round {day['proof_round']}, waiting")
+    return f"Proofing: {state} ({tally})"
+
+
+@admin_only
+async def cmd_proofers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    rows = db.list_proofers()
+    lines = ["👀 Collage proofers — they see the collage before anyone else."]
+    if not rows:
+        lines.append(
+            "\nNobody yet, so the collage still waits for you as before.\n"
+            "Add someone with /proofer <id|@username>."
+        )
+    for r in rows:
+        mark = {"active": "🟢", "inactive": "⚪️", "kicked": "🚫"}[r["status"]]
+        uname = f"@{r['username']}" if r["username"] else ""
+        last = f"last asked {r['last_proofed_on']}" if r["last_proofed_on"] else "never asked"
+        lines.append(f"{mark} {r['first_name']} {uname} (id {r['tg_id']}) — {last}")
+    lines.append("\n/proofer <id|@username> — add or remove someone\n/proofing — settings and tonight's state")
+    await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_proofer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle someone's proofer flag. Adding sends them the explanation and the
+    guidelines, so the first heads-up doesn't arrive out of nowhere."""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /proofer <id|@username> — toggles them on or off "
+            "(/proofers to see the list)"
+        )
+        return
+    user = _resolve_user(context.args[0])
+    if user is None:
+        await update.message.reply_text("No such user (try /users for the ids).")
+        return
+    on = not user["proofer"]
+    db.set_proofer(user["tg_id"], on)
+    name = f"{user['first_name']} (id {user['tg_id']})"
+    if not on:
+        await update.message.reply_text(f"👀 {name} is no longer a proofer.")
+        return
+    lang = user["lang"]
+    try:
+        await context.bot.send_message(
+            user["tg_id"],
+            t(lang, "PROOF_ENROLLED", deadline=jobs.deadline_label(lang))
+            + "\n\n"
+            + t(lang, "PROOF_RULES"),
+        )
+        note = "briefed ✅"
+    except Exception:
+        log.exception("proof enrollment note to %s failed", user["tg_id"])
+        note = "⚠️ couldn't DM them the briefing — they'll get the rules with their first heads-up"
+    await update.message.reply_text(f"👀 {name} is now a proofer — {note}")
+
+
+PROOF_KEYS = {
+    "batch": ("proof_batch", 1, 10),
+    "round": ("proof_round_min", 1, 240),
+    "quorum": ("proof_ban_quorum", 1, 10),
+}
+
+
+@admin_only
+async def cmd_proofing(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show or change the proofing knobs (and switch the whole thing off)."""
+    today = jobs.now_local().date().isoformat()
+    args = [a.lower() for a in context.args]
+    if args and args[0] in ("on", "off"):
+        db.set_setting("proof_enabled", "1" if args[0] == "on" else "0")
+        await update.message.reply_text(
+            f"Proofing {args[0]} ✅"
+            + ("" if args[0] == "on" else " — the collage waits for you again.")
+        )
+        return
+    if args:
+        new = {}
+        try:
+            for arg in args:
+                key, _, val = arg.partition("=")
+                if key not in PROOF_KEYS or not val:
+                    raise ValueError(f"unknown argument «{arg}»")
+                setting, lo, hi = PROOF_KEYS[key]
+                if not (lo <= int(val) <= hi):
+                    raise ValueError(f"{key} must be {lo}–{hi}")
+                new[setting] = val
+        except ValueError as e:
+            await update.message.reply_text(f"Not saved: {e}")
+            return
+        for setting, val in new.items():
+            db.set_setting(setting, val)
+
+    cfg = jobs.proof_cfg()
+    n = len(db.proofer_ids())
+    lines = [
+        f"👀 Proofing: {'on' if cfg['enabled'] else 'off'} — {n} active proofer(s)",
+        f"batch = {cfg['batch']} people asked per round",
+        f"round = {cfg['round_min']} min of silence before the next batch",
+        f"quorum = {cfg['quorum']} bans park the day on you",
+        "",
+        "Change: /proofing batch=3 round=10 quorum=2",
+        "/proofing off — back to the admin-only flow",
+        "/proofers — who's on the list",
+    ]
+    day = db.get_day(today)
+    if day:
+        state = _proof_state_line(today, day)
+        if state:
+            lines.append("")
+            lines.append(f"Today: {state}")
+            lines += jobs.proof_hold_lines(today)
+    await update.message.reply_text("\n".join(lines))
 
 
 # --- story of the day --------------------------------------------------------

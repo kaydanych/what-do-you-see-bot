@@ -143,6 +143,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
     app.add_handler(CallbackQueryHandler(usr.on_story_like, pattern=r"^story:"))
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
+    app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
@@ -162,6 +163,9 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("forcecollage", adm.cmd_forcecollage))
     app.add_handler(CommandHandler("delcollage", adm.cmd_delcollage))
     app.add_handler(CommandHandler("preview", adm.cmd_preview))
+    app.add_handler(CommandHandler("proofers", adm.cmd_proofers))
+    app.add_handler(CommandHandler("proofer", adm.cmd_proofer))
+    app.add_handler(CommandHandler("proofing", adm.cmd_proofing))
     app.add_handler(CommandHandler("skipday", adm.cmd_skipday))
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
     app.add_handler(CommandHandler("kick", adm.cmd_kick))

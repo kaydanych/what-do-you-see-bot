@@ -115,6 +115,20 @@ CREATE TABLE IF NOT EXISTS story_likes (
     liked_at TEXT,
     PRIMARY KEY (story_id, tg_id)
 );
+-- Collage proofing: a few trusted users see the collage before anyone else and
+-- either wave it through (one 👍 publishes) or hold it for the admin. One row
+-- per person asked per day; `value` stays NULL until they decide.
+CREATE TABLE IF NOT EXISTS proof_asks (
+    date       TEXT NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    round_no   INTEGER NOT NULL,     -- 1 = first batch, 2+ = escalations
+    message_id INTEGER,              -- the preview message, so it can be closed
+    asked_at   TEXT,
+    value      TEXT,                 -- approve | ban
+    note       TEXT,                 -- optional free-text reason for a ban
+    voted_at   TEXT,
+    PRIMARY KEY (date, tg_id)
+);
 -- Every copy of a published story, so a tap can refresh the tally on all of them.
 CREATE TABLE IF NOT EXISTS story_messages (
     story_id   INTEGER NOT NULL,
@@ -141,13 +155,20 @@ def init(path: Path | str | None = None) -> None:
             else:
                 _conn.execute("ALTER TABLE prompts ADD COLUMN text_ru TEXT")
         migrations = {
-            "users": [("lang", "TEXT")],
+            "users": [
+                ("lang", "TEXT"),
+                ("proofer", "INTEGER NOT NULL DEFAULT 0"),
+                ("last_proofed_on", "TEXT"),
+            ],
             "photos": [("excluded", "INTEGER NOT NULL DEFAULT 0")],
             "days": [
                 ("moderation_sent_at", "TEXT"),
                 ("final_reminder_sent_at", "TEXT"),
                 ("collage_nudges", "INTEGER NOT NULL DEFAULT 0"),
                 ("preview_sent_at", "TEXT"),
+                ("proof_asked_at", "TEXT"),
+                ("proof_round", "INTEGER NOT NULL DEFAULT 0"),
+                ("proof_result", "TEXT"),  # approved | held | exhausted
             ],
             "stories": [("text_ru", "TEXT")],
         }
@@ -347,6 +368,9 @@ def set_day_field(date: str, field: str, value) -> None:
         "collage_sent_at",
         "collage_nudges",
         "preview_sent_at",
+        "proof_asked_at",
+        "proof_round",
+        "proof_result",
         "skipped",
     }
     ensure_day(date)
@@ -451,6 +475,102 @@ def delete_collage_messages(date: str) -> None:
 
 def delete_ratings(date: str) -> None:
     _exec("DELETE FROM ratings WHERE date=?", (date,))
+
+
+# --- collage proofing ---------------------------------------------------------
+
+def set_proofer(tg_id: int, on: bool) -> None:
+    _exec("UPDATE users SET proofer=? WHERE tg_id=?", (1 if on else 0, tg_id))
+
+
+def list_proofers() -> list[sqlite3.Row]:
+    """Everyone flagged as a proofer, whatever their status — for /proofers."""
+    return _exec(
+        "SELECT * FROM users WHERE proofer=1 ORDER BY first_name"
+    ).fetchall()
+
+
+def proofer_ids() -> list[int]:
+    """Active proofers, whoever was asked longest ago first (never-asked lead),
+    so the duty rotates instead of always landing on the same two people."""
+    rows = _exec(
+        "SELECT tg_id FROM users WHERE proofer=1 AND status='active' "
+        "ORDER BY last_proofed_on IS NOT NULL, last_proofed_on, tg_id"
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def add_proof_ask(date: str, tg_id: int, round_no: int) -> None:
+    """Put someone on the hook for a date. Asking is what advances the rotation,
+    so last_proofed_on moves even when they never answer."""
+    _exec(
+        "INSERT INTO proof_asks(date, tg_id, round_no, asked_at) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(date, tg_id) DO NOTHING",
+        (date, tg_id, round_no, _now()),
+    )
+    _exec("UPDATE users SET last_proofed_on=? WHERE tg_id=?", (date, tg_id))
+
+
+def delete_proof_ask(date: str, tg_id: int) -> None:
+    _exec("DELETE FROM proof_asks WHERE date=? AND tg_id=?", (date, tg_id))
+
+
+def set_proof_message(date: str, tg_id: int, message_id: int | None) -> None:
+    _exec(
+        "UPDATE proof_asks SET message_id=? WHERE date=? AND tg_id=?",
+        (message_id, date, tg_id),
+    )
+
+
+def get_proof_ask(date: str, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM proof_asks WHERE date=? AND tg_id=?", (date, tg_id)
+    ).fetchone()
+
+
+def proof_asks_for(date: str, round_no: int | None = None) -> list[sqlite3.Row]:
+    sql = "SELECT * FROM proof_asks WHERE date=?"
+    params: tuple = (date,)
+    if round_no is not None:
+        sql += " AND round_no=?"
+        params += (round_no,)
+    return _exec(sql + " ORDER BY round_no, asked_at", params).fetchall()
+
+
+def set_proof_vote(date: str, tg_id: int, value: str) -> bool:
+    """Record a decision. Returns False if that person already decided — votes
+    are deliberately one-shot, unlike the collage ratings."""
+    row = get_proof_ask(date, tg_id)
+    if row is None or row["value"]:
+        return False
+    _exec(
+        "UPDATE proof_asks SET value=?, voted_at=? WHERE date=? AND tg_id=?",
+        (value, _now(), date, tg_id),
+    )
+    return True
+
+
+def set_proof_note(date: str, tg_id: int, note: str) -> None:
+    _exec(
+        "UPDATE proof_asks SET note=? WHERE date=? AND tg_id=?",
+        (note.strip(), date, tg_id),
+    )
+
+
+def proof_counts(date: str) -> dict[str, int]:
+    rows = _exec(
+        "SELECT value, COUNT(*) AS n FROM proof_asks WHERE date=? "
+        "AND value IS NOT NULL GROUP BY value",
+        (date,),
+    ).fetchall()
+    return {r["value"]: r["n"] for r in rows}
+
+
+def proof_bans(date: str) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM proof_asks WHERE date=? AND value='ban' ORDER BY voted_at",
+        (date,),
+    ).fetchall()
 
 
 # --- custom feedback polls --------------------------------------------------
