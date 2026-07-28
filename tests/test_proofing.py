@@ -144,6 +144,30 @@ def test_a_batch_never_re_asks_someone_asked_today():
         assert sorted(jobs.pick_proof_batch(DATE, 3)) == [3, 4]
 
 
+def test_bulk_add_is_idempotent():
+    """A pasted list of ids has to survive being pasted twice — /proofer's
+    toggle would quietly undo the first run."""
+    for uid in (1, 2, 3):
+        db.upsert_user(uid, f"U{uid}", None)
+    replies: list[str] = []
+
+    async def reply_text(text):
+        replies.append(text)
+
+    update = SimpleNamespace(message=SimpleNamespace(reply_text=reply_text))
+
+    asyncio.run(adm._bulk_proofers(update, "add", ["1", "2", "999"]))
+    assert sorted(db.proofer_ids()) == [1, 2]
+    assert "Not found (1): 999" in replies[-1]
+
+    asyncio.run(adm._bulk_proofers(update, "add", ["1", "2", "3"]))
+    assert sorted(db.proofer_ids()) == [1, 2, 3]  # re-run adds, never removes
+    assert "Already on the list (2)" in replies[-1]
+
+    asyncio.run(adm._bulk_proofers(update, "remove", ["2"]))
+    assert sorted(db.proofer_ids()) == [1, 3]
+
+
 def test_a_trusted_user_who_sat_out_today_is_never_asked():
     """Proofers only ever see a collage they're already in."""
     seed_day(proofers=(1, 2, 3, 4), submitters=(1, 2))

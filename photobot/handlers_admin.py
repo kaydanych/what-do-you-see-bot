@@ -78,7 +78,8 @@ to a fresh 3; two 🚫 park the day on you with their notes — then /exclude N 
 min; when the list runs out you get the nudges, as before. Once the day is
 decided, the question is deleted from anyone who hadn't answered.
 /proofers — who's on the list and when they were last asked
-/proofer <id|@username> — add/remove someone (silent — nobody is notified)
+/proofers add|remove <id> <id> … — bulk edit, safe to re-run
+/proofer <id|@username> — toggle one (silent — nobody is ever notified)
 /proofing — settings + tonight's state
 /proofing batch=3 round=10 quorum=2 — tune it
 /proofing off — back to the admin-only flow
@@ -485,8 +486,45 @@ def _proof_state_line(date: str, day) -> str | None:
     return f"Proofing: {state} ({tally})"
 
 
+async def _bulk_proofers(update: Update, action: str, targets: list[str]) -> None:
+    """Flag many people at once. Idempotent, unlike /proofer's toggle — pasting
+    thirty ids twice must not silently undo the first paste."""
+    if not targets:
+        await update.message.reply_text(
+            f"Usage: /proofers {action} <id|@username> … (space-separated)"
+        )
+        return
+    on = action == "add"
+    changed, already, missing = [], [], []
+    for arg in targets:
+        user = _resolve_user(arg)
+        if user is None:
+            missing.append(arg)
+        elif bool(user["proofer"]) == on:
+            already.append(user["first_name"])
+        else:
+            db.set_proofer(user["tg_id"], on)
+            changed.append(user["first_name"])
+    verb = "Added" if on else "Removed"
+    lines = [f"👀 {verb} {len(changed)}" + (f": {', '.join(changed)}" if changed else "")]
+    if already:
+        lines.append(
+            f"Already {'on' if on else 'off'} the list ({len(already)}): "
+            + ", ".join(already)
+        )
+    if missing:
+        lines.append(
+            f"⚠️ Not found ({len(missing)}): {', '.join(missing)} — /users for the ids"
+        )
+    lines.append(f"\nThe list is now {len(db.proofer_ids())} active proofer(s).")
+    await update.message.reply_text("\n".join(lines))
+
+
 @admin_only
 async def cmd_proofers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.args and context.args[0].lower() in ("add", "remove"):
+        await _bulk_proofers(update, context.args[0].lower(), context.args[1:])
+        return
     rows = db.list_proofers()
     lines = ["👀 Collage proofers — they see the collage before anyone else."]
     if not rows:
@@ -499,7 +537,12 @@ async def cmd_proofers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         uname = f"@{r['username']}" if r["username"] else ""
         last = f"last asked {r['last_proofed_on']}" if r["last_proofed_on"] else "never asked"
         lines.append(f"{mark} {r['first_name']} {uname} (id {r['tg_id']}) — {last}")
-    lines.append("\n/proofer <id|@username> — add or remove someone\n/proofing — settings and tonight's state")
+    lines.append(
+        "\n/proofers add <id|@username> … — add several at once (idempotent)"
+        "\n/proofers remove <id|@username> … — drop several"
+        "\n/proofer <id|@username> — toggle one"
+        "\n/proofing — settings and tonight's state"
+    )
     await update.message.reply_text("\n".join(lines))
 
 
