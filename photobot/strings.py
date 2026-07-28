@@ -102,37 +102,6 @@ STRINGS = {
             "{name} рассказывает, почему выбрал(а) это фото:\n«{text}»"
         ),
         # --- collage proofing (trusted users check the collage pre-publish) ---
-        "PROOF_RULES": (
-            "Что считается проблемой\n\n"
-            "Планка намеренно высокая. Это маленький круг друзей, и странное, "
-            "некрасивое, скучное или «не по заданию» фото — НЕ повод что-то "
-            "останавливать. Останавливай коллаж, только если фото очевидно "
-            "ломает общее пространство:\n\n"
-            "• обнажённость или сексуальный контент\n"
-            "• узнаваемый человек в личной или уязвимой ситуации, который явно "
-            "не соглашался это показывать\n"
-            "• настоящие кровь, травмы, насилие, жестокость к животным — крупно "
-            "и прямо\n"
-            "• символика ненависти или экстремизма, оскорбление в адрес "
-            "человека или группы\n"
-            "• чьи-то личные данные в кадре — документы, адрес, телефон, "
-            "скриншот личной переписки\n"
-            "• кадр, смысл которого — унизить конкретного узнаваемого "
-            "человека\n\n"
-            "Не повод: плохой вкус, плохое качество съёмки, скучный кадр, "
-            "алкоголь или сигареты, чёрный юмор, игнорирование задания или "
-            "просто «мне не нравится».\n\n"
-            "Сомневаешься — публикуй. Пусть лучше выйдет одно спорное фото, "
-            "чем мы начнём тихо цензурировать друг друга."
-        ),
-        "PROOF_ENROLLED": (
-            "👀 Теперь ты в числе тех, кто смотрит коллаж до публикации — "
-            "спасибо, что взял(а)ся!\n\n"
-            "Как это работает: в вечера, когда выпадет твоя очередь, сразу "
-            "после {deadline} я пришлю тебе коллаж дня — раньше, чем его "
-            "увидит кто-либо ещё. Если всё в порядке, одного 👍 достаточно, "
-            "чтобы он ушёл всем."
-        ),
         "PROOF_ASK": (
             "👀 ПРОВЕРКА КОЛЛАЖА — РЕШАЕШЬ ТЫ\n\n"
             "Коллаж дня, фото: {n}. Его ещё никто не видел — он уйдёт всем, "
@@ -291,34 +260,6 @@ STRINGS = {
             "{name} on why they chose this photo:\n«{text}»"
         ),
         # --- collage proofing (trusted users check the collage pre-publish) ---
-        "PROOF_RULES": (
-            "What counts as a problem\n\n"
-            "The bar is high on purpose. This is a small circle of friends, and "
-            "a weird, ugly, boring or off-prompt photo is NOT a reason to hold "
-            "anything. Hold the collage only if a photo would obviously break "
-            "the social space we share:\n\n"
-            "• nudity or sexual content\n"
-            "• someone recognizable in a private or vulnerable moment who "
-            "clearly didn't agree to be shared\n"
-            "• real, graphic blood, injury, violence, cruelty to animals\n"
-            "• hateful or extremist symbols, or an insult aimed at a person "
-            "or a group\n"
-            "• someone's personal data left visible — documents, an address, a "
-            "phone number, a screenshot of a private chat\n"
-            "• a shot whose point is to humiliate an identifiable person\n\n"
-            "Not a reason to hold: bad taste, bad photography, a boring shot, "
-            "alcohol or cigarettes, dark humour, a photo that ignores the "
-            "prompt, or simply a photo you don't like.\n\n"
-            "When in doubt — publish. Better one questionable photo goes out "
-            "than us quietly censoring each other."
-        ),
-        "PROOF_ENROLLED": (
-            "👀 You're now one of the people who check the collage before it "
-            "goes out — thanks for taking this on!\n\n"
-            "How it works: on the evenings it's your turn, right after "
-            "{deadline} I'll send you the day's collage — before anyone else "
-            "has seen it. If nothing's wrong, one 👍 sends it to everyone."
-        ),
         "PROOF_ASK": (
             "👀 COLLAGE CHECK — YOUR CALL\n\n"
             "Today's collage, {n} photo(s). Nobody has seen it yet — it goes "

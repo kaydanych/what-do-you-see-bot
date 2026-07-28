@@ -126,16 +126,22 @@ def seed_day(proofers=(1, 2, 3, 4, 5, 6), submitters=(1, 2, 3, 4, 5, 6)):
 
 # --- who gets asked -----------------------------------------------------------
 
-def test_batch_prefers_submitters_then_rotates_by_last_asked():
-    seed_day(proofers=(1, 2, 3), submitters=(3,))
-    # 3 took part today and would receive this collage anyway, so they lead
-    assert jobs.pick_proof_batch(DATE, 3) == [3, 1, 2]
-    # asking is what advances the rotation, answered or not
-    db.add_proof_ask("2026-07-27", 1, 1)
-    assert jobs.pick_proof_batch(DATE, 3) == [3, 2, 1]
-    # nobody is asked twice in one day
-    db.add_proof_ask(DATE, 3, 1)
-    assert jobs.pick_proof_batch(DATE, 3) == [2, 1]
+def test_batch_is_a_random_draw_from_the_trusted_list():
+    seed_day(proofers=(1, 2, 3, 4, 5, 6))
+    draws = [tuple(jobs.pick_proof_batch(DATE, 3)) for _ in range(200)]
+    assert all(len(set(d)) == 3 for d in draws)  # never asks the same person twice
+    assert all(set(d) <= {1, 2, 3, 4, 5, 6} for d in draws)
+    # over many draws everyone comes up — nobody owns or is locked out of a night
+    assert set().union(*draws) == {1, 2, 3, 4, 5, 6}
+    assert len(set(draws)) > 1  # and it isn't the same batch every time
+
+
+def test_a_batch_never_re_asks_someone_asked_today():
+    seed_day(proofers=(1, 2, 3, 4))
+    db.add_proof_ask(DATE, 1, 1)
+    db.add_proof_ask(DATE, 2, 1)
+    for _ in range(50):
+        assert sorted(jobs.pick_proof_batch(DATE, 3)) == [3, 4]
 
 
 def test_inactive_and_unflagged_users_are_never_asked():
@@ -189,6 +195,11 @@ def test_a_stranger_cannot_publish_the_collage(monkeypatch):
 
 # --- holding ------------------------------------------------------------------
 
+def batch_of(round_no: int) -> list[int]:
+    """Who the random draw actually put in a round."""
+    return [r["tg_id"] for r in db.proof_asks_for(DATE, round_no)]
+
+
 def test_a_ban_takes_two_taps():
     seed_day(proofers=(1, 2, 3))
     bot = FakeBot()
@@ -211,7 +222,7 @@ def test_a_ban_takes_two_taps():
 
 def test_a_hold_beats_a_later_approval(monkeypatch):
     """The collage stops being publishable the moment anyone flags it, however
-    fast someone else waves it through."""
+    fast someone else in the same batch waves it through."""
     seed_day(proofers=(1, 2, 3, 4, 5, 6))
     bot = FakeBot()
     context = ctx(bot)
@@ -219,9 +230,10 @@ def test_a_hold_beats_a_later_approval(monkeypatch):
         jobs, "send_collage", lambda *a, **k: pytest.fail("must not publish")
     )
     asyncio.run(jobs.send_proof_round(context, DATE, 1))
+    flagger, colleague = batch_of(1)[:2]
 
-    tap(context, 1, "holdyes")
-    query = tap(context, 2, "ok")
+    tap(context, flagger, "holdyes")
+    query = tap(context, colleague, "ok")
 
     assert db.proof_counts(DATE) == {"approve": 1, "ban": 1}
     assert db.get_day(DATE)["proof_result"] is None  # not published, not resolved
@@ -234,17 +246,19 @@ def test_two_holds_park_the_day_on_the_admin():
     context = ctx(bot)
     asyncio.run(jobs.send_proof_round(context, DATE, 1))
 
-    tap(context, 1, "holdyes")
+    flagger = batch_of(1)[0]
+    tap(context, flagger, "holdyes")
     assert db.get_day(DATE)["proof_result"] is None  # one flag is not a veto
     assert db.get_day(DATE)["proof_round"] == 2  # fresh eyes instead
 
     context.user_data.clear()
-    tap(context, 4, "holdyes")  # someone from the escalation batch agrees
+    seconder = batch_of(2)[0]  # someone from the escalation batch agrees
+    tap(context, seconder, "holdyes")
     assert db.get_day(DATE)["proof_result"] == "held"
     assert "on hold" in bot.texts_to(99)
     # the four who never answered lose the question rather than keeping a
     # keyboard for a day that's already decided
-    assert sorted(set(bot.deleted)) == [2, 3, 5, 6]
+    assert set(bot.deleted) == {1, 2, 3, 4, 5, 6} - {flagger, seconder}
 
 
 def test_one_hold_then_an_approval_publishes_and_tells_the_admin(monkeypatch):
@@ -260,11 +274,12 @@ def test_one_hold_then_an_approval_publishes_and_tells_the_admin(monkeypatch):
     monkeypatch.setattr(jobs, "send_collage", fake_send_collage)
     asyncio.run(jobs.send_proof_round(context, DATE, 1))
 
-    tap(context, 1, "holdyes")
-    db.set_proof_note(DATE, 1, "photo 4 has an address on it")
+    flagger = batch_of(1)[0]
+    tap(context, flagger, "holdyes")
+    db.set_proof_note(DATE, flagger, "photo 4 has an address on it")
     # round 2 sees nothing wrong — one flag alone doesn't hold the day
     context.user_data.clear()
-    tap(context, 4, "ok")
+    tap(context, batch_of(2)[0], "ok")
 
     assert sent == [DATE]
     assert db.get_day(DATE)["proof_result"] == "approved"
@@ -295,14 +310,17 @@ def test_silence_escalates_to_the_next_batch():
     context = ctx(bot)
 
     assert run_proofing(context) is True  # first batch goes out
-    assert sorted(bot.photos) == [1, 2, 3]
+    first = batch_of(1)
+    assert sorted(bot.photos) == sorted(first) and len(first) == 3
 
     assert run_proofing(context, minutes_later=5) is True  # still their round
     assert len(bot.photos) == 3
 
     assert run_proofing(context, minutes_later=20) is True
-    assert sorted(bot.photos) == [1, 2, 3, 4, 5, 6]
     assert db.get_day(DATE)["proof_round"] == 2
+    # the second batch is the rest of the list — nobody is asked twice
+    assert set(batch_of(2)).isdisjoint(first)
+    assert sorted(bot.photos) == [1, 2, 3, 4, 5, 6]
 
 
 def test_nobody_answers_at_all_hands_the_day_back():

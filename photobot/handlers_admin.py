@@ -69,15 +69,16 @@ proofing on it goes out as soon as a proofer waves it through (see below).
 /unkick <id|@username> — restore a user
 
 👀 Proofing (trusted users check the collage before it goes out)
-At the deadline the collage — no numbers, no names — goes to 2–3 proofers,
-unannounced, asking whether anything is wrong. One 👍 publishes it. A 🚫 (they
-confirm it twice) freezes the publish and rolls to a fresh batch; two 🚫 park
-the day on you with their notes — then /exclude N and /forcecollage, or
-/forcecollage as is. Silence rolls to the next batch every 10 min; when the
-list runs out you get the nudges, as before. Once the day is decided, the
-question is deleted from anyone who hadn't answered.
+Keep a long list of people you trust; each night 3 of them are picked at
+random. At the deadline the collage — no numbers, no names — goes to them,
+unannounced, asking whether anything is wrong; the rules ride in that message.
+One 👍 publishes it. A 🚫 (they confirm it twice) freezes the publish and rolls
+to a fresh 3; two 🚫 park the day on you with their notes — then /exclude N and
+/forcecollage, or /forcecollage as is. Silence rolls to the next 3 every 10
+min; when the list runs out you get the nudges, as before. Once the day is
+decided, the question is deleted from anyone who hadn't answered.
 /proofers — who's on the list and when they were last asked
-/proofer <id|@username> — add/remove someone (adding DMs them the guidelines)
+/proofer <id|@username> — add/remove someone (silent — nobody is notified)
 /proofing — settings + tonight's state
 /proofing batch=3 round=10 quorum=2 — tune it
 /proofing off — back to the admin-only flow
@@ -504,8 +505,9 @@ async def cmd_proofers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 @admin_only
 async def cmd_proofer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Toggle someone's proofer flag. Adding sends them the explanation and the
-    guidelines, so the first heads-up doesn't arrive out of nowhere."""
+    """Toggle someone's proofer flag, silently — building the trusted list
+    doesn't ping anyone. The nightly ask carries its own instructions, so the
+    first time someone hears about this is a collage they can act on."""
     if not context.args:
         await update.message.reply_text(
             "Usage: /proofer <id|@username> — toggles them on or off "
@@ -519,22 +521,10 @@ async def cmd_proofer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     on = not user["proofer"]
     db.set_proofer(user["tg_id"], on)
     name = f"{user['first_name']} (id {user['tg_id']})"
-    if not on:
-        await update.message.reply_text(f"👀 {name} is no longer a proofer.")
-        return
-    lang = user["lang"]
-    try:
-        await context.bot.send_message(
-            user["tg_id"],
-            t(lang, "PROOF_ENROLLED", deadline=jobs.deadline_label(lang))
-            + "\n\n"
-            + t(lang, "PROOF_RULES"),
-        )
-        note = "briefed ✅"
-    except Exception:
-        log.exception("proof enrollment note to %s failed", user["tg_id"])
-        note = "⚠️ couldn't DM them the briefing — they'll get the rules with their first heads-up"
-    await update.message.reply_text(f"👀 {name} is now a proofer — {note}")
+    state = "is now a proofer" if on else "is no longer a proofer"
+    await update.message.reply_text(
+        f"👀 {name} {state} — {len(db.proofer_ids())} on the list."
+    )
 
 
 PROOF_KEYS = {

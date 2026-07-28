@@ -69,11 +69,12 @@ Waiting for the admin every single night is the bottleneck the rest of the day
 doesn't have. So a small **trusted list** sees the collage before anyone else
 and, in the overwhelming majority of cases, waves it through.
 
-**Who is asked.** Users flagged with `/proofer`. At the deadline a batch
-(default 3) is drawn preferring **people who submitted that day** — they receive
-that collage anyway, so nobody ends up seeing a day they weren't part of — and
-within each half, whoever was asked longest ago. Being *asked* advances the
-rotation, answered or not, so duty doesn't pile onto the reliable few.
+**Who is asked.** A standing list of people flagged with `/proofer` — meant to
+be long and uniformly trusted, not a rota. At the deadline a batch (default 3)
+is drawn **at random** from it; escalations draw again from whoever hasn't been
+asked that day. Random rather than round-robin so nobody comes to own a
+particular weekday and an escalation reaches genuinely fresh eyes. Adding
+someone is silent: no enrollment DM, no ceremony, just a list.
 
 **No warning shot.** There is no heads-up message: the collage simply arrives
 at the deadline asking whether anything is wrong. Silence rolls to the next
@@ -105,14 +106,13 @@ Once the day is decided, whoever answered keeps their copy captioned with the
 outcome, and the question is **deleted** from everyone who hadn't got round to
 it — no stale buttons, no "who already decided this?".
 
-**What "inappropriate" means** is deliberately narrow and lives in
-`strings.py` as `PROOF_RULES` (both languages), sent when someone is added to
-the list; the nightly ask carries a one-line reminder rather than repeating it.
-The bar: only an obvious violation of the shared social space — nudity, someone
-identifiable in a private moment, graphic violence, hate symbols, exposed
-personal data, a shot meant to humiliate. Explicitly *not* grounds: bad taste,
-bad photography, boring, off prompt, or "I don't like it". Closing line:
-**when in doubt, publish.**
+**What "inappropriate" means** is deliberately narrow and rides in the ask
+itself (`PROOF_ASK`, both languages) — there is no separate briefing to
+remember or miss. The bar: only an obvious violation of the shared social
+space — nudity, someone identifiable in a private moment, graphic violence,
+hate symbols, exposed personal data, a shot meant to humiliate. Explicitly
+*not* grounds: bad taste, bad photography, boring, off prompt, or "I don't like
+it". Closing line: **when in doubt, publish.**
 
 A confirmed ban asks for an optional free-text note ("what's wrong, and which
 photo?") which is forwarded to the admin as-is.
@@ -216,7 +216,7 @@ happens in the bot chat:
 | `/forcecollage [date]` | Build & send the collage after review (this is the ONLY way it goes out) |
 | `/delcollage [date]` | Delete a sent collage from every chat (≤48 h) and reset the day |
 | `/preview` | Build the collage and send it **only to admin** — dry run |
-| `/proofers`, `/proofer <id\|@user>` | The trusted proofing list; adding someone DMs them the guidelines (§4a) |
+| `/proofers`, `/proofer <id\|@user>` | The standing trusted list a nightly batch is drawn from (§4a); adding is silent |
 | `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
 | `/broadcast <text>` | Message all active users |

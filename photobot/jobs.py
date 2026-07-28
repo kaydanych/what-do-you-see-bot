@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -327,17 +328,14 @@ def proof_confirm_keyboard(date: str, lang: str | None) -> InlineKeyboardMarkup:
 
 
 def pick_proof_batch(date: str, n: int) -> list[int]:
-    """The next n proofers to ask. People who submitted today come first — they
-    receive that collage anyway, so nobody ends up seeing a day they weren't
-    part of — and within each half it's whoever was asked longest ago. Anyone
-    already asked for this date is skipped."""
+    """A random n from the trusted list, minus anyone already asked today.
+
+    Random rather than a rotation: the list is meant to be long and uniformly
+    trusted, so an unpredictable draw spreads the duty without anyone coming to
+    own a particular weekday, and an escalation reaches genuinely fresh eyes."""
     asked = {r["tg_id"] for r in db.proof_asks_for(date)}
-    submitters = set(db.submitter_ids(date))
-    ranked = db.proofer_ids()
-    ordered = [u for u in ranked if u in submitters] + [
-        u for u in ranked if u not in submitters
-    ]
-    return [u for u in ordered if u not in asked][:n]
+    pool = [u for u in db.proofer_ids() if u not in asked]
+    return random.sample(pool, min(n, len(pool)))
 
 
 async def send_proof_round(
