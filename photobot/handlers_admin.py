@@ -115,9 +115,31 @@ def admin_only(func):
     return wrapper
 
 
+HELP_CHUNK = 3800  # Telegram caps a message at 4096; leave room to breathe
+
+
+def help_chunks(text: str, limit: int = HELP_CHUNK) -> list[str]:
+    """Pack the blank-line-separated sections into as few messages as fit, so a
+    split lands between sections instead of halfway through a command list. A
+    single oversized section is hard-split as a last resort."""
+    chunks: list[str] = []
+    for section in text.split("\n\n"):
+        while len(section) > limit:
+            chunks.append(section[:limit])
+            section = section[limit:]
+        if chunks and len(chunks[-1]) + 2 + len(section) <= limit:
+            chunks[-1] += "\n\n" + section
+        else:
+            chunks.append(section)
+    return chunks
+
+
 @admin_only
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(ADMIN_HELP)
+    """The list outgrew Telegram's message limit once already (the proofing
+    section tipped it to 4142 chars), so it always goes out in chunks."""
+    for chunk in help_chunks(ADMIN_HELP):
+        await update.message.reply_text(chunk)
 
 
 @admin_only

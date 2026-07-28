@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from photobot import config, db, handlers_user as usr, jobs
+from photobot import config, db, handlers_admin as adm, handlers_user as usr, jobs
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +26,28 @@ def fresh_db(tmp_path, monkeypatch):
 
 
 DATE = "2026-07-28"
+TG_MAX = 4096
+
+
+def test_admin_help_is_sent_in_sendable_chunks():
+    """/admin died with 'Message is too long' once the proofing section pushed
+    it past Telegram's limit, so the split is now enforced here."""
+    chunks = adm.help_chunks(adm.ADMIN_HELP)
+    assert all(len(c) <= TG_MAX for c in chunks)
+    # nothing is dropped and the sections keep their order
+    assert "\n\n".join(chunks) == adm.ADMIN_HELP
+    # sections stay whole: every chunk starts a section, never mid-list
+    assert all(not c.startswith(("/", "•", " ")) for c in chunks)
+
+
+def test_help_chunks_packs_sections_then_splits():
+    text = "\n\n".join(["A" * 1000, "B" * 1000, "C" * 1000])
+    chunks = adm.help_chunks(text, limit=2100)
+    # the first two sections share a message; the third would overflow it
+    assert [len(c) for c in chunks] == [1000 + 2 + 1000, 1000]
+    assert chunks[1] == "C" * 1000
+    # a single section bigger than the limit is still cut into sendable pieces
+    assert [len(c) for c in adm.help_chunks("X" * 350, limit=100)] == [100] * 3 + [50]
 
 
 class FakeBot:
