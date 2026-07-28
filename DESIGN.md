@@ -70,11 +70,17 @@ doesn't have. So a small **trusted list** sees the collage before anyone else
 and, in the overwhelming majority of cases, waves it through.
 
 **Who is asked.** A standing list of people flagged with `/proofer` — meant to
-be long and uniformly trusted, not a rota. At the deadline a batch (default 3)
-is drawn **at random** from it; escalations draw again from whoever hasn't been
-asked that day. Random rather than round-robin so nobody comes to own a
-particular weekday and an escalation reaches genuinely fresh eyes. Adding
-someone is silent: no enrollment DM, no ceremony, just a list.
+be long (most of the group) and uniformly trusted, not a rota. Adding someone
+is silent: no enrollment DM, no ceremony, just a list.
+
+Each night the batch is drawn **at random** from the overlap of that list with
+**that day's submitters**, so a proofer only ever gets an early look at a
+collage they're already in. With most of the group trusted, the overlap is
+normally many batches deep; when it does run dry the day falls back to the
+admin rather than reaching for someone who didn't play. Escalations draw again
+from whoever in that overlap hasn't been asked yet — random rather than
+round-robin, so nobody comes to own a particular weekday and a second batch is
+genuinely fresh eyes.
 
 **No warning shot.** There is no heads-up message: the collage simply arrives
 at the deadline asking whether anything is wrong. Silence rolls to the next

@@ -69,8 +69,8 @@ proofing on it goes out as soon as a proofer waves it through (see below).
 /unkick <id|@username> — restore a user
 
 👀 Proofing (trusted users check the collage before it goes out)
-Keep a long list of people you trust; each night 3 of them are picked at
-random. At the deadline the collage — no numbers, no names — goes to them,
+Keep a long list of people you trust; each night 3 are picked at random from
+whoever on it played that day. At the deadline the collage — no names — goes to them,
 unannounced, asking whether anything is wrong; the rules ride in that message.
 One 👍 publishes it. A 🚫 (they confirm it twice) freezes the publish and rolls
 to a fresh 3; two 🚫 park the day on you with their notes — then /exclude N and

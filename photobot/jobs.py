@@ -328,13 +328,20 @@ def proof_confirm_keyboard(date: str, lang: str | None) -> InlineKeyboardMarkup:
 
 
 def pick_proof_batch(date: str, n: int) -> list[int]:
-    """A random n from the trusted list, minus anyone already asked today.
+    """A random n of the people who both played today and are on the trusted
+    list, minus anyone already asked today.
 
-    Random rather than a rotation: the list is meant to be long and uniformly
-    trusted, so an unpredictable draw spreads the duty without anyone coming to
-    own a particular weekday, and an escalation reaches genuinely fresh eyes."""
+    Restricted to that day's submitters, so a proofer only ever gets an early
+    look at a collage they're already in — nobody sees a day they sat out. The
+    trusted list is long enough that the overlap is normally many batches deep;
+    when it does run dry the day falls back to the admin rather than reaching
+    for someone who didn't play.
+
+    Random within that pool rather than a rotation, so nobody comes to own a
+    particular weekday and an escalation reaches genuinely fresh eyes."""
     asked = {r["tg_id"] for r in db.proof_asks_for(date)}
-    pool = [u for u in db.proofer_ids() if u not in asked]
+    submitters = set(db.submitter_ids(date))
+    pool = [u for u in db.proofer_ids() if u in submitters and u not in asked]
     return random.sample(pool, min(n, len(pool)))
 
 

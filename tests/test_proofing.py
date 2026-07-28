@@ -144,6 +144,24 @@ def test_a_batch_never_re_asks_someone_asked_today():
         assert sorted(jobs.pick_proof_batch(DATE, 3)) == [3, 4]
 
 
+def test_a_trusted_user_who_sat_out_today_is_never_asked():
+    """Proofers only ever see a collage they're already in."""
+    seed_day(proofers=(1, 2, 3, 4), submitters=(1, 2))
+    for _ in range(50):
+        assert sorted(jobs.pick_proof_batch(DATE, 3)) == [1, 2]
+
+
+def test_a_thin_overlap_runs_out_rather_than_reaching_further():
+    seed_day(proofers=(1, 2, 3, 4, 5, 6), submitters=(1, 2, 3, 4))
+    first = jobs.pick_proof_batch(DATE, 3)
+    for uid in first:
+        db.add_proof_ask(DATE, uid, 1)
+    # only the fourth submitter is left; the untrusted-today two are not touched
+    assert len(jobs.pick_proof_batch(DATE, 3)) == 1
+    db.add_proof_ask(DATE, jobs.pick_proof_batch(DATE, 3)[0], 2)
+    assert jobs.pick_proof_batch(DATE, 3) == []  # -> the day goes back to the admin
+
+
 def test_inactive_and_unflagged_users_are_never_asked():
     seed_day(proofers=(1, 2), submitters=(1, 2, 3))
     db.set_user_status(2, "inactive")
