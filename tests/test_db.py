@@ -21,6 +21,23 @@ def test_user_lifecycle():
     assert db.get_user_by_username("@NIK")["tg_id"] == 1
 
 
+def test_pending_users_stay_behind_the_gate():
+    assert db.upsert_user(2, "Ann", "ann", "pending") is True
+    assert db.get_user(2)["status"] == "pending"
+    assert db.active_user_ids() == []            # invisible to every broadcast
+    assert [r["tg_id"] for r in db.pending_users()] == [2]
+    # re-registering refreshes the name for the admin's card but never promotes
+    db.upsert_user(2, "Anna", "anna_k", "pending")
+    assert db.get_user(2)["status"] == "pending"
+    assert db.get_user(2)["first_name"] == "Anna"
+    # ...not even through the plain 'active' default other callers use
+    db.upsert_user(2, "Anna", "anna_k")
+    assert db.get_user(2)["status"] == "pending"
+
+    db.set_user_status(2, "active")
+    assert db.active_user_ids() == [2] and db.pending_users() == []
+
+
 def test_prompt_pick_is_sequential_then_stops():
     assert db.pick_prompt() is None
     a = db.add_prompt("water", 1)

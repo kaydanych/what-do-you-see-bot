@@ -131,12 +131,30 @@ and is changed from the admin chat via `/proofing`.
 
 - Users join by opening the bot and sending `/start` (invite = just share the
   bot's `t.me/...` link).
-- On each new join, the **admin gets a notification** («Новый участник: Имя,
-  @username»). Admin can `/kick` anyone; kicked users are blocked from
-  rejoining unless un-kicked.
-  - *Open question for Nikita:* is notify-and-kick enough, or do you want
-    explicit approval (new users held in "pending" until admin confirms)?
+- **Nobody joins unseen.** A newcomer is created as `pending` and the admin gets
+  their card — name, @username, id, first seen — with two inline buttons,
+  ✅ Approve / 🚫 Reject. This is the answer to the old open question: the game
+  is small and almost family-sized, so notify-and-kick (letting a stranger in
+  and removing them afterwards) was the wrong default.
+  - While pending they are outside `active_user_ids()`, so **no** prompt,
+    reminder, collage, poll or broadcast reaches them; every message they send
+    gets the bilingual "you're on the list" note (`PENDING`) instead of being
+    acted on. They can still pick a language, so the wait — and the welcome that
+    follows — arrive in it.
+  - ✅ flips them to `active` and greets them there and then: the welcome, plus
+    today's prompt if a day is open. Someone approved before choosing a language
+    gets the picker first, and the welcome follows their tap.
+  - 🚫 marks them `kicked`, and they're told the door is closed. Both decisions
+    are one tap and reversible with `/kick` / `/unkick`; the card is edited in
+    place to say which, so a stale copy in a second admin's chat can't re-decide
+    anything.
+  - `/pending` re-sends the cards, buttons and all, for when the original has
+    scrolled away. Pending users show as ⏳ in `/users`, and `/status` counts
+    them when any are waiting.
+  - Admins skip their own gate — they'd have nobody to let them in.
 - `/stop` (or blocking the bot) marks a user inactive; `/start` reactivates.
+  A *pending* user's `/stop` leaves them pending: 'inactive' would take them off
+  the gate and the next `/start` would revive them straight into the game.
 - If Telegram reports the bot is blocked by a user during a broadcast, the user
   is auto-marked inactive — no crash, no retry storm.
 
@@ -215,7 +233,8 @@ happens in the bot chat:
 | Command | Does |
 |---|---|
 | `/status` | Today's prompt, submitted count + names, time to deadline, unused-prompt count |
-| `/users` | Active/inactive/kicked list with join dates |
+| `/users` | Pending/active/inactive/kicked list with join dates |
+| `/pending` | Newcomers awaiting ✅, each with the Approve/Reject buttons again (§5) |
 | `/addprompt`, `/prompts`, `/delprompt` | Library management (see §6) |
 | `/times`, `/settimes` | Show / change the daily schedule (stored in DB, applies within a minute) |
 | `/forceprompt` | Send today's prompt now (if the 09:00 job misfired) |
@@ -278,8 +297,9 @@ copy new code, rebuild container; DB and photos live in the volume and survive.
 ## 12. Data model (SQLite)
 
 ```
-users   (tg_id PK, first_name, username, status TEXT       -- active|inactive|kicked
-         , joined_at, kicked_at, lang, proofer INT, last_proofed_on)
+users   (tg_id PK, first_name, username, status TEXT       -- pending|active|
+         , joined_at, kicked_at, lang, proofer INT,        -- inactive|kicked
+         last_proofed_on)                                  -- pending = awaiting ✅ (§5)
 prompts (id PK, text, source TEXT DEFAULT 'library', used_on DATE NULL,
          added_by, added_at)
 days    (date PK, prompt_id FK, prompt_sent_at, collage_sent_at,

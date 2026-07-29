@@ -10,7 +10,7 @@ from telegram import Update
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import config, db, jobs, version
+from . import config, db, handlers_user as usr, jobs, version
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -24,6 +24,14 @@ ADMIN_HELP = """Admin commands
 /status — today at a glance
 /users — user list
 /version — which build is running (deployed commit)
+
+🚪 New users (nobody joins unseen)
+Every newcomer lands on a waiting list and you get their card with ✅ / 🚫.
+Until you tap ✅ they are outside everything — no prompt, reminder, collage,
+poll or broadcast — and each message they send gets a "you're on the list"
+note. ✅ greets them and starts the game, 🚫 closes the door (/unkick undoes it,
+/kick undoes a ✅). They show as ⏳ in /users.
+/pending — everyone still waiting, with the buttons again
 
 📝 Prompts (the queue)
 /addprompt <en> | <ru> — append a prompt (| and RU optional; EN is what everyone gets)
@@ -93,6 +101,11 @@ decided, the question is deleted from anyone who hadn't answered.
 /publishstory <id> — send that photo + story to everyone in the game (reveals the author's name); it carries a ❤️ button with a live shared tally
 /publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
 /dismissstory <id> — discard a story"""
+
+
+# How each user status reads in a list. '⏳' is a newcomer still waiting for a
+# ✅ — they are registered but outside everything the bot sends.
+STATUS_MARK = {"active": "🟢", "pending": "⏳", "inactive": "⚪️", "kicked": "🚫"}
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
@@ -192,6 +205,9 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             lines.append(proof)
     active = len(db.active_user_ids())
     lines.append(f"Active users: {active}")
+    waiting = len(db.pending_users())
+    if waiting:
+        lines.append(f"⏳ Waiting for your ✅: {waiting} — /pending")
     lines.append(f"Unused prompts: {db.count_unused_prompts()}")
     await update.message.reply_text("\n".join(lines))
 
@@ -204,7 +220,7 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
     lines = []
     for r in rows:
-        mark = {"active": "🟢", "inactive": "⚪️", "kicked": "🚫"}[r["status"]]
+        mark = STATUS_MARK.get(r["status"], "•")
         uname = f"@{r['username']}" if r["username"] else ""
         joined = (r["joined_at"] or "")[:10]
         lines.append(f"{mark} {r['first_name']} {uname} (id {r['tg_id']}, {joined})")
@@ -533,7 +549,7 @@ async def cmd_proofers(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "Add someone with /proofer <id|@username>."
         )
     for r in rows:
-        mark = {"active": "🟢", "inactive": "⚪️", "kicked": "🚫"}[r["status"]]
+        mark = STATUS_MARK.get(r["status"], "•")
         uname = f"@{r['username']}" if r["username"] else ""
         last = f"last asked {r['last_proofed_on']}" if r["last_proofed_on"] else "never asked"
         lines.append(f"{mark} {r['first_name']} {uname} (id {r['tg_id']}) — {last}")
@@ -1168,6 +1184,77 @@ async def cmd_pollclose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(
         f"🔒 Poll #{pid} closed. Final: 👍 {c.get('up', 0)} · 👎 {c.get('down', 0)}."
     )
+
+
+# --- new-user verification ----------------------------------------------------
+
+@admin_only
+async def on_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """✅ / 🚫 under a newcomer's card. ✅ lets them into the game and greets
+    them there and then; 🚫 closes the door. Both are one tap — /kick and
+    /unkick undo either, and the edited card says so."""
+    query = update.callback_query
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        await query.answer()
+        return
+    _, uid_s, action = parts
+    uid = int(uid_s)
+    row = db.get_user(uid)
+    if row is None:
+        await query.answer("No such user any more.")
+        await query.edit_message_reply_markup(None)
+        return
+
+    who = f"{row['first_name']} (id {uid})"
+    if row["status"] != "pending":
+        # Another admin (or a /kick) already settled this; converge this copy.
+        await query.answer("Already handled.")
+        await query.edit_message_text(f"👤 {who} — already {row['status']}.")
+        return
+
+    if action == "ok":
+        db.set_user_status(uid, "active")
+        await query.answer("Approved ✅")
+        await query.edit_message_text(f"✅ {who} is in — /kick to undo.")
+        try:
+            await usr.send_entry_point(context, uid, row["first_name"])
+        except Exception:
+            # They may have blocked the bot while waiting — they're still in.
+            log.exception("welcome to freshly approved %s failed", uid)
+            await update.effective_message.reply_text(
+                f"⚠️ Couldn't message {who} — approved anyway."
+            )
+        return
+
+    if action == "no":
+        db.set_user_status(uid, "kicked")
+        await query.answer("Rejected 🚫")
+        await query.edit_message_text(f"🚫 {who} turned away — /unkick to undo.")
+        try:
+            await context.bot.send_message(uid, t(db.get_user_lang(uid), "KICKED"))
+        except Exception:
+            log.debug("rejection notice to %s failed", uid)
+        return
+
+    await query.answer()
+
+
+@admin_only
+async def cmd_pending(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The waiting list with its buttons again — for when the original card has
+    scrolled away."""
+    rows = db.pending_users()
+    if not rows:
+        await update.message.reply_text(
+            "Nobody waiting ✅ Every newcomer so far has been let in or turned away."
+        )
+        return
+    await update.message.reply_text(f"⏳ {len(rows)} waiting for your ✅:")
+    for r in rows:
+        await update.message.reply_text(
+            jobs.verify_card(r), reply_markup=jobs.verify_keyboard(r["tg_id"])
+        )
 
 
 def _resolve_user(arg: str):

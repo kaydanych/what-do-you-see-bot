@@ -155,12 +155,50 @@ def day_number(date: str) -> int | None:
     return n if n >= 1 else None
 
 
-async def notify_admins(context: ContextTypes.DEFAULT_TYPE, text: str) -> None:
+async def notify_admins(
+    context: ContextTypes.DEFAULT_TYPE, text: str, reply_markup=None
+) -> None:
     for admin_id in config.ADMIN_IDS:
         try:
-            await context.bot.send_message(admin_id, text)
+            await context.bot.send_message(admin_id, text, reply_markup=reply_markup)
         except Exception:
             log.exception("failed to notify admin %s", admin_id)
+
+
+# --- new-user verification ----------------------------------------------------
+#
+# Nobody joins the game unseen. A newcomer lands in 'pending' and the admins get
+# their card with ✅ / 🚫; until someone taps ✅ they are outside
+# active_user_ids(), so no prompt, reminder, collage, poll or broadcast reaches
+# them — they just get the "you're on the list" note.
+
+
+def verify_keyboard(tg_id: int) -> InlineKeyboardMarkup:
+    """Admin-facing, so the labels are English like the rest of the admin side."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Approve", callback_data=f"verify:{tg_id}:ok"),
+                InlineKeyboardButton("🚫 Reject", callback_data=f"verify:{tg_id}:no"),
+            ]
+        ]
+    )
+
+
+def verify_card(user) -> str:
+    uname = f"@{user['username']}" if user["username"] else "—"
+    joined = (user["joined_at"] or "")[:16].replace("T", " ")
+    return (
+        f"👤 New user: {user['first_name']} {uname}\n"
+        f"id {user['tg_id']} · first seen {joined}\n\n"
+        "They're on hold and hear nothing from the bot until you decide."
+    )
+
+
+async def ask_admins_to_verify(context: ContextTypes.DEFAULT_TYPE, user) -> None:
+    await notify_admins(
+        context, verify_card(user), verify_keyboard(user["tg_id"])
+    )
 
 
 async def send_per_user(

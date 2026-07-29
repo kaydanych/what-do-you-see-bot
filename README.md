@@ -105,10 +105,13 @@ fire it now, send a photo, `/preview` to see the collage.
 
 Tests: `.venv/bin/python -m pytest tests/`
 
-> **Running it for a private circle?** Set `ALLOWED_IDS` to a comma-separated
-> list of user ids and the bot ignores everyone else. Left empty, anyone who
-> finds the bot's @name can join, play, and receive that day's collage — you
-> get a DM about each new arrival, but that's after the fact.
+> **Running it for a private circle?** Anyone who finds the bot's @name can
+> knock, but nobody gets in unseen: a newcomer is held on a waiting list and you
+> get their card with **✅ Approve / 🚫 Reject** buttons. Until you tap ✅ they
+> receive no prompt, reminder or collage — just a note saying they're on the
+> list. `/pending` brings the cards back if one scrolls away.
+> For a harder line, set `ALLOWED_IDS` to a comma-separated list of user ids and
+> the bot ignores everyone else outright.
 
 ## Running it day to day
 
@@ -117,6 +120,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 | | |
 |---|---|
 | `/status` | today at a glance — prompt sent? who's in? collage pending? |
+| `/pending` | newcomers waiting to be let in — ✅ / 🚫 right there in the chat |
 | `/exclude N` · `/include N` · `/ban N` | moderate the contact sheet |
 | `/preview` · `/forcecollage` | see it, then send it |
 | `/proofers` · `/proofer @who` · `/proofing` | who checks the collage for you, and how |

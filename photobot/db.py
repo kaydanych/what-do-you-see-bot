@@ -210,17 +210,30 @@ def set_setting(key: str, value: str) -> None:
 
 # --- users ------------------------------------------------------------------
 
-def upsert_user(tg_id: int, first_name: str, username: str | None) -> bool:
-    """Register or reactivate a user. Returns True if the user is new."""
+def upsert_user(
+    tg_id: int, first_name: str, username: str | None, new_status: str = "active"
+) -> bool:
+    """Register or reactivate a user. `new_status` is the status a brand-new row
+    gets — the bot creates newcomers as 'pending' so an admin can wave them in,
+    while scripts and seeds keep the plain 'active' default. Returns True if the
+    user is new."""
     existing = get_user(tg_id)
     if existing is None:
         _exec(
             "INSERT INTO users(tg_id, first_name, username, status, joined_at) "
-            "VALUES(?, ?, ?, 'active', ?)",
-            (tg_id, first_name, username, _now()),
+            "VALUES(?, ?, ?, ?, ?)",
+            (tg_id, first_name, username, new_status, _now()),
         )
         return True
-    if existing["status"] != "kicked":
+    # Touching an existing row refreshes the name and revives whoever ran /stop.
+    if existing["status"] == "pending":
+        # Keep them behind the gate — otherwise any message would walk a
+        # newcomer straight past it — but keep the name on the admin's card fresh.
+        _exec(
+            "UPDATE users SET first_name=?, username=? WHERE tg_id=?",
+            (first_name, username, tg_id),
+        )
+    elif existing["status"] != "kicked":
         _exec(
             "UPDATE users SET first_name=?, username=?, status='active' WHERE tg_id=?",
             (first_name, username, tg_id),
@@ -262,6 +275,14 @@ def list_users() -> list[sqlite3.Row]:
 def active_user_ids() -> list[int]:
     rows = _exec("SELECT tg_id FROM users WHERE status='active'").fetchall()
     return [r["tg_id"] for r in rows]
+
+
+def pending_users() -> list[sqlite3.Row]:
+    """Newcomers waiting for an admin's ✅, longest wait first. They are not in
+    active_user_ids(), so nothing the bot broadcasts reaches them meanwhile."""
+    return _exec(
+        "SELECT * FROM users WHERE status='pending' ORDER BY joined_at, tg_id"
+    ).fetchall()
 
 
 # --- prompts ----------------------------------------------------------------

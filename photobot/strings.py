@@ -148,6 +148,14 @@ STRINGS = {
             "⏸ Остановлено — дальше решает организатор. Спасибо за проверку!"
         ),
         "PROOF_CLOSED_NOTED": "✔️ Записал — спасибо за проверку!",
+        # --- verification (a newcomer waits for the organizer's ✅) ---
+        "PENDING": (
+            "Ты в списке ✅\n\n"
+            "Игра маленькая и почти семейная, поэтому организатор впускает "
+            "каждого вручную. Напишу тебе сразу, как только тебя впустят — "
+            "тогда и начнём 👋"
+        ),
+        "APPROVED": "✅ Тебя впустили — добро пожаловать!",
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
         "HELP": (
@@ -305,6 +313,14 @@ STRINGS = {
             "⏸ On hold — the organizer takes it from here. Thanks for checking!"
         ),
         "PROOF_CLOSED_NOTED": "✔️ Noted — thanks for checking!",
+        # --- verification (a newcomer waits for the organizer's ✅) ---
+        "PENDING": (
+            "You're on the list ✅\n\n"
+            "This game is small and almost family-sized, so the organizer lets "
+            "everyone in by hand. I'll message you the moment you're in — and "
+            "then we start 👋"
+        ),
+        "APPROVED": "✅ You're in — welcome!",
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
         "HELP": (

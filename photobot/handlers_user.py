@@ -6,7 +6,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
-from . import collage, db, jobs
+from . import collage, config, db, jobs
 from .strings import CHOOSE_LANG, LANG_BUTTONS, STRINGS, t
 
 log = logging.getLogger(__name__)
@@ -52,20 +52,38 @@ def day_status(now=None) -> tuple[str, dict | None]:
     return "open", day
 
 
-async def _register(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Ensure the sender exists and is not kicked. Returns False to abort."""
+def _initial_status(tg_id: int) -> str:
+    """What a brand-new row starts as: everyone waits for an admin's ✅, except
+    the admins themselves — they'd have nobody to let them in."""
+    return "active" if tg_id in config.ADMIN_IDS else "pending"
+
+
+async def _register(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, *, allow_pending: bool = False
+) -> bool:
+    """Ensure the sender exists and may play. Returns False to abort.
+
+    A newcomer is created on hold and the admins get their card with ✅ / 🚫;
+    until one of them approves, every message gets the waiting-list note instead
+    of being acted on. /start and /lang pass allow_pending so someone waiting can
+    still pick the language their notes arrive in."""
     u = update.effective_user
     row = db.get_user(u.id)
     if row is not None and row["status"] == "kicked":
         await update.message.reply_text(t(row["lang"], "KICKED"))
         return False
-    is_new = db.upsert_user(u.id, u.first_name or "", u.username)
+    is_new = db.upsert_user(
+        u.id, u.first_name or "", u.username, _initial_status(u.id)
+    )
+    row = db.get_user(u.id)
+    if row["status"] != "pending":
+        return True
     if is_new:
-        await jobs.notify_admins(
-            context,
-            f"👤 New user: {u.first_name} @{u.username or '—'} (id {u.id})",
-        )
-    return True
+        await jobs.ask_admins_to_verify(context, row)
+    if allow_pending:
+        return True
+    await update.message.reply_text(t(row["lang"], "PENDING"))
+    return False
 
 
 async def _send_welcome(
@@ -84,12 +102,31 @@ async def _send_welcome(
             )
 
 
+async def send_entry_point(
+    context: ContextTypes.DEFAULT_TYPE, tg_id: int, name: str
+) -> None:
+    """What someone sees the moment an admin lets them in: the language picker
+    if they never got round to choosing (the welcome then follows their tap),
+    otherwise the welcome itself."""
+    lang = db.get_user_lang(tg_id)
+    if lang is None:
+        await context.bot.send_message(
+            tg_id, CHOOSE_LANG, reply_markup=_lang_keyboard()
+        )
+        return
+    await context.bot.send_message(tg_id, t(lang, "APPROVED"))
+    await _send_welcome(context, tg_id, name, lang)
+
+
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _register(update, context):
+    if not await _register(update, context, allow_pending=True):
         return
     u = update.effective_user
     if db.get_user_lang(u.id) is None:
         await update.message.reply_text(CHOOSE_LANG, reply_markup=_lang_keyboard())
+        return
+    if db.get_user(u.id)["status"] == "pending":
+        await update.message.reply_text(t(db.get_user_lang(u.id), "PENDING"))
         return
     await _send_welcome(
         context, update.effective_chat.id, u.first_name or "", db.get_user_lang(u.id)
@@ -97,7 +134,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not await _register(update, context):
+    if not await _register(update, context, allow_pending=True):
         return
     await update.message.reply_text(CHOOSE_LANG, reply_markup=_lang_keyboard())
 
@@ -109,18 +146,27 @@ async def on_lang_choice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await query.answer()
         return
     u = update.effective_user
-    db.upsert_user(u.id, u.first_name or "", u.username)
+    db.upsert_user(u.id, u.first_name or "", u.username, _initial_status(u.id))
     first_choice = db.get_user_lang(u.id) is None
     db.set_user_lang(u.id, lang)
     await query.answer()
     await query.edit_message_text(t(lang, "LANG_SET"))
+    if db.get_user(u.id)["status"] == "pending":
+        # Still waiting to be let in — now at least the wait is in their language.
+        await context.bot.send_message(query.message.chat_id, t(lang, "PENDING"))
+        return
     if first_choice:
         await _send_welcome(context, query.message.chat_id, u.first_name or "", lang)
 
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    lang = db.get_user_lang(update.effective_user.id)
-    db.set_user_status(update.effective_user.id, "inactive")
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+    row = db.get_user(uid)
+    # Someone still on the waiting list stays there: flipping them to 'inactive'
+    # would take them off the gate, and the next /start would let them in unseen.
+    if row is None or row["status"] != "pending":
+        db.set_user_status(uid, "inactive")
     await update.message.reply_text(t(lang, "STOPPED"))
 
 
