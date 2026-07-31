@@ -240,7 +240,8 @@ happens in the bot chat:
 | `/forceprompt` | Send today's prompt now (if the 09:00 job misfired) |
 | `/forcecollage [date]` | Build & send the collage after review (this is the ONLY way it goes out) |
 | `/delcollage [date]` | Delete a sent collage from every chat (≤48 h) and reset the day |
-| `/preview` | Build the collage and send it **only to admin** — dry run |
+| `/preview` | Build the collage and send it **only to admin** — dry run (keeps the hi-res zoom file) |
+| `/knocks [date]` | The night's knock tally (§11a), then the leader(s) as pictures with 💬 to ask that author |
 | `/proofers`, `/proofer <id\|@user>` | The standing trusted list a nightly batch is drawn from (§4a); adding is silent |
 | `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
@@ -304,8 +305,12 @@ prompts (id PK, text, source TEXT DEFAULT 'library', used_on DATE NULL,
          added_by, added_at)
 days    (date PK, prompt_id FK, prompt_sent_at, collage_sent_at,
          skipped INT DEFAULT 0)
-photos  (date FK, tg_id FK, file_path, submitted_at,
+photos  (date FK, tg_id FK, file_path, submitted_at, file_id,  -- file_id: reused
          PRIMARY KEY (date, tg_id))                          -- resubmit = UPSERT
+knocks  (date, tg_id, target_id, knocked_at,                 -- one knock each
+         PRIMARY KEY (date, tg_id))                          -- (§11a), movable
+collage_cells (date, idx, tg_id,                             -- frozen mosaic order
+         PRIMARY KEY (date, idx))                            -- the carousel walks
 ratings (date, tg_id, value TEXT, rated_at,                  -- fire|like|meh
          PRIMARY KEY (date, tg_id))                          -- revote = UPSERT
 collage_messages (date, tg_id, message_id,                   -- per-user copy of the
@@ -316,6 +321,54 @@ proof_asks (date, tg_id, round_no, message_id, asked_at,     -- pre-publish chec
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```
+
+## 11a. "Knock, knock" — the group picks the story of the day
+
+Choosing whose photo gets asked used to be Nikita's taste alone (`/askstory N`).
+Now the room nominates, and the machinery it feeds is the one §12a already
+describes.
+
+**Not a like.** Under the published collage sits one button, English for
+everyone — `🚪 Knock, knock, who's there...` — a nursery rhyme rather than an
+instruction, so it lands as the surprise it is. Tapping it opens a carousel of
+the day's photos; you knock on the one whose story you want. Four things keep it
+from being a like: it is addressed to a *person*, not to content; you get
+**one** knock; there is **no live tally**, so nobody can bandwagon; and the
+author's name only surfaces if they choose to answer.
+
+**Why a carousel and not numbers.** Numbers drawn on the collage are ugly, and
+two attempts at a numberless "shadow" keyboard mirroring the mosaic rows were
+built and rejected in testing (`scripts/knock_lab.py` keeps both): Telegram
+gives every button in a row the same width, so the strip never quite lines up
+with photos of different aspect ratios. Flipping through the actual photos needs
+no mapping at all.
+
+**Cost.** A flip is one `editMessageMedia` referencing a stored `file_id` — no
+image work, no upload. Measured: **3 ms CPU and ~100 ms latency per flip**, and
+zero added RAM. `photos.file_id` is captured at submission, so a reader never
+waits for an upload. This also retired the hi-res zoom companion for readers
+(they can look closely in the carousel); it survives on `/preview` as the
+admin's moderation aid.
+
+**Nothing leaks.** The card carries no name, no filename (submissions are stored
+as `u<telegram_id>.jpg`), and no position in the mosaic. Revealing the author is
+the prize.
+
+**The window** opens when the collage is published and closes at **12:00 the
+next day**. Knocking is restricted to that day's submitters, never on your own
+photo, and a knock can be *moved* while the window is open.
+
+**Resolution is manual.** `/knocks [date]` prints the ranked tally, then the
+leader as a picture captioned with their number, name and knock count. Tied
+leaders come as a carousel — `‹ · 💬 Ask this one · ›` — so the choice is made
+by looking at the photographs, not at a number. 💬 fires the existing
+`/askstory` flow for that author; a copyable `/askstory <date> ` stem covers
+reaching any other door.
+
+The mosaic order is frozen into `collage_cells` at publish time. It used to be
+derived from `hash(date)`, which Python salts per process — a collage rebuilt
+after a restart would silently rearrange itself under anyone mid-flip; the seed
+is now `crc32`.
 
 ## 12a. Community features
 

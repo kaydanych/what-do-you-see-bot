@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import zlib
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
 from pathlib import Path
@@ -30,6 +31,69 @@ def rating_keyboard(date: str) -> InlineKeyboardMarkup:
         label = f"{emoji} {n}" if n else emoji
         row.append(InlineKeyboardButton(label, callback_data=f"rate:{date}:{value}"))
     return InlineKeyboardMarkup([row])
+
+
+# --- knock, knock ------------------------------------------------------------
+#
+# Under the collage sits one English button — a nursery rhyme, not an
+# instruction, so it reads the same to everyone and lands as the surprise it is.
+# Tapping it opens a carousel of the day's photos; you knock on the one whose
+# story you want. One knock each. Nothing about the author is shown anywhere:
+# revealing them is the prize, so the card carries no name, no filename, and no
+# position in the mosaic.
+KNOCK_LABEL = "🚪 Knock, knock, who's there..."
+# Knocking stays open overnight and closes at noon the next day, when the tally
+# is read and one author is asked for the story.
+KNOCK_CLOSE_HOUR = 12
+
+
+def knock_open_for(date: str) -> bool:
+    """Is the window still open for `date`? Opens when the collage goes out,
+    closes at KNOCK_CLOSE_HOUR the following day."""
+    day = db.get_day(date)
+    if not day or not day["collage_sent_at"]:
+        return False
+    close = datetime.combine(
+        date_cls.fromisoformat(date) + timedelta(days=1),
+        time(KNOCK_CLOSE_HOUR),
+        tzinfo=config.TZ,
+    )
+    return now_local() < close
+
+
+def knock_open_keyboard(date: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(KNOCK_LABEL, callback_data=f"kn:open:{date}")]]
+    )
+
+
+def collage_keyboard(date: str, *, knock: bool | None = None) -> InlineKeyboardMarkup:
+    """Everything that hangs under a published collage: the live rating row,
+    plus the knock door while the window is open. One function, because a
+    rating tap redraws this keyboard on every copy — building the rows
+    separately is how the door quietly disappears the first time someone
+    taps 🔥. `knock` overrides the window check for the send itself, which
+    runs before the day is marked published."""
+    rows = list(rating_keyboard(date).inline_keyboard)
+    if knock_open_for(date) if knock is None else knock:
+        rows += knock_open_keyboard(date).inline_keyboard
+    return InlineKeyboardMarkup(rows)
+
+
+def knock_card_keyboard(date: str, idx: int, total: int) -> InlineKeyboardMarkup:
+    """‹ · knock · ›. The counter is the reader's position in the carousel, not
+    a photo number — it says nothing about whose photo this is."""
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("‹", callback_data=f"kn:go:{date}:{(idx - 1) % total}"),
+                InlineKeyboardButton(
+                    f"🚪 Knock · {idx + 1}/{total}", callback_data=f"kn:hit:{date}:{idx}"
+                ),
+                InlineKeyboardButton("›", callback_data=f"kn:go:{date}:{(idx + 1) % total}"),
+            ]
+        ]
+    )
 
 
 STORY_HEART = "❤️"
@@ -708,6 +772,13 @@ async def send_moderation(context: ContextTypes.DEFAULT_TYPE, date: str) -> None
             log.exception("moderation send to admin %s failed", admin_id)
 
 
+def collage_seed(date: str) -> int:
+    """Stable across processes — `hash()` is salted per run, so a collage
+    rebuilt after a restart would come out rearranged and no longer match the
+    stored knock carousel order."""
+    return zlib.crc32(date.encode()) & 0x7FFFFFFF
+
+
 def _render_collage(
     date: str, lang: str, *, hires: bool = False, stem: str = "collage"
 ) -> Path:
@@ -738,7 +809,7 @@ def _render_collage(
         on_date=date,
         day_number=day_number(date),
         lang=lang,
-        seed=hash(date) & 0x7FFFFFFF,
+        seed=collage_seed(date),
         **extra,
     )
     return out
@@ -776,10 +847,25 @@ async def send_collage(
 
     n = len(photos)
 
-    # Busy days: the compressed inline photo is too small to read, so attach a
-    # zoomable hi-res file (a document) alongside it. Small days don't need it.
-    attach_hires = n >= config.COLLAGE_HIRES_MIN_PHOTOS
+    # The zoom file is now the admin's moderation aid only: readers who want a
+    # closer look flip through the photos themselves in the knock carousel.
+    attach_hires = preview_to is not None and n >= config.COLLAGE_HIRES_MIN_PHOTOS
     stem = "collage_preview" if preview_to else "collage"
+
+    # Freeze which photo sits in which tile before anything is sent — the
+    # carousel walks this order, and a later rebuild must not silently reshuffle
+    # under readers who are mid-flip.
+    by_path = {p["file_path"]: p["tg_id"] for p in photos}
+    if preview_to is None:
+        db.set_collage_cells(
+            date,
+            [
+                by_path[str(p)]
+                for p in collage.arrangement(
+                    [Path(p["file_path"]) for p in photos], collage_seed(date)
+                )
+            ],
+        )
 
     async def build(lang: str, *, hires: bool = False) -> Path:
         return await render_collage(date, lang, hires=hires, stem=stem)
@@ -821,7 +907,7 @@ async def send_collage(
         {lang: await build(lang, hires=True) for lang in langs} if attach_hires else {}
     )
 
-    keyboard = rating_keyboard(date)
+    keyboard = collage_keyboard(date, knock=True)
     photo_ids: dict[str, str] = {}
     doc_ids: dict[str, str] = {}
     sent = 0

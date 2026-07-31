@@ -70,6 +70,20 @@ STRINGS = {
         "TODAY_SUBMITTED": "\n\nТвоё фото уже у меня ✅ (можешь прислать другое — заменю)",
         "TODAY_NOT_SUBMITTED": "\n\nТвоего фото ещё нет — жду до {deadline}!",
         "RATE_THANKS": "Спасибо за оценку! {emoji}",
+        "KNOCK_EXPLAIN": (
+            "За каждым снимком кто-то стоит. У тебя один стук — постучись в "
+            "самый интересный, и автор снимка, набравшего больше всего стуков, "
+            "(возможно) откроется и расскажет свою историю."
+        ),
+        "KNOCK_DONE": (
+            "🚪 Ты постучал. Если в эту дверь постучат больше всего, услышим "
+            "историю за ней."
+        ),
+        "KNOCK_TOAST": "🚪 Ты постучал",
+        "KNOCK_MOVED": "🚪 Перенёс твой стук на этот снимок",
+        "KNOCK_OWN": "Это твой снимок 🙂 постучись в чужой",
+        "KNOCK_CLOSED": "Стучать уже поздно — двери на сегодня закрыты.",
+        "KNOCK_NOT_YOURS": "Это только для тех, кто прислал фото в тот день.",
         "POLL_THANKS": "Спасибо! Твой голос учтён.",
         "POLL_CLOSED": "Опрос закрыт — голосование завершено.",
         "TZ_SUFFIX": "по Берлину",
@@ -236,6 +250,19 @@ STRINGS = {
         "TODAY_SUBMITTED": "\n\nYour photo is in ✅ (send another one to replace it)",
         "TODAY_NOT_SUBMITTED": "\n\nNo photo from you yet — you have until {deadline}!",
         "RATE_THANKS": "Thanks for rating! {emoji}",
+        "KNOCK_EXPLAIN": (
+            "There's someone behind every photo. You get one knock — spend it "
+            "on the one you're most curious about, and the author of the photo "
+            "with the most knocks steps out and tells its story."
+        ),
+        "KNOCK_DONE": (
+            "🚪 Knocked. If this door gets the most knocks, we'll hear its story."
+        ),
+        "KNOCK_TOAST": "🚪 Knocked",
+        "KNOCK_MOVED": "🚪 Moved your knock to this one",
+        "KNOCK_OWN": "That one's yours 🙂 knock on someone else's",
+        "KNOCK_CLOSED": "Too late to knock — the doors are closed for that day.",
+        "KNOCK_NOT_YOURS": "This is for the people who sent a photo that day.",
         "POLL_THANKS": "Thanks! Your vote is counted.",
         "POLL_CLOSED": "This poll is closed — voting has ended.",
         "TZ_SUFFIX": "Berlin time",

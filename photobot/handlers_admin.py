@@ -6,7 +6,12 @@ import random
 from datetime import date as date_cls
 from datetime import time
 
-from telegram import Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Update,
+)
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
@@ -94,6 +99,7 @@ decided, the question is deleted from anyone who hadn't answered.
 
 💬 Story of the day (the photo + why the author chose it)
 /photos [YYYY-MM-DD] — numbered author list for a day (numbers = the contact sheet)
+/knocks [YYYY-MM-DD] — who the group knocked on; ranked, then the leader as a picture with their name — ‹ › through the tied ones and 💬 asks that author right there
 /askstory [YYYY-MM-DD] N — DM author N their photo and ask why they chose it
 /askstory random — pick a random past photo and ask its author
 /stories — stories the authors have answered, waiting to publish
@@ -685,6 +691,166 @@ async def cmd_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     header = f"📷 {date} — {len(lines)} photo(s):"
     footer = f"\n/askstory {date} N — ask author N why they chose their photo"
     await msg.reply_text(header + "\n" + "\n".join(lines) + "\n" + footer)
+
+
+@admin_only
+async def cmd_knocks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/knocks [date] — the night's tally. Deliberately manual: you read the
+    result and decide whether it's a winner worth asking, rather than the bot
+    asking on its own."""
+    msg = update.effective_message
+    date = _parse_date_arg(context.args[0] if context.args else None)
+    if date is None:
+        await msg.reply_text("Usage: /knocks [YYYY-MM-DD] (default: today)")
+        return
+
+    tally = db.knock_tally(date)
+    photos = db.photos_for(date, include_excluded=True)
+    number_of = {p["tg_id"]: i for i, p in enumerate(photos, 1)}
+    voters = len(db.photos_for(date))
+    state = "open" if jobs.knock_open_for(date) else "closed"
+
+    if not tally:
+        await msg.reply_text(f"🚪 {date}: nobody knocked yet ({state}).")
+        return
+
+    lines = []
+    for rank, row in enumerate(tally, 1):
+        u = db.get_user(row["target_id"])
+        name = u["first_name"] if u else str(row["target_id"])
+        n = number_of.get(row["target_id"], "?")
+        lines.append(f"{rank}. {row['n']} × 🚪 — #{n} {html.escape(name)}")
+
+    top = tally[0]
+    tied = [r for r in tally if r["n"] == top["n"]]
+    verdict = (
+        f"\n⚖️ {len(tied)} photos tied on {top['n']} — earliest to get there is "
+        f"#{number_of.get(top['target_id'], '?')}."
+        if len(tied) > 1
+        else ""
+    )
+    # The ask is left as a copyable stem rather than a finished command: which
+    # door to open is your call, and on a tie the top of the list isn't
+    # automatically the one worth asking.
+    await msg.reply_text(
+        f"🚪 {date} — {sum(r['n'] for r in tally)} knocks from {voters} players "
+        f"({state}):\n" + "\n".join(lines) + verdict + "\n\n"
+        f"Any other door — copy this, then add the number:\n"
+        f"<pre>/askstory {date} </pre>",
+        parse_mode="HTML",
+    )
+    # ...and the leaders as pictures, because a number tells you nothing about
+    # whether the shot has a story in it.
+    await send_candidates(
+        update, context, date, [r["target_id"] for r in tied], 0
+    )
+
+
+def _candidate_keyboard(date: str, pos: int, total: int) -> InlineKeyboardMarkup:
+    row = []
+    if total > 1:
+        row.append(
+            InlineKeyboardButton("‹", callback_data=f"kw:go:{date}:{(pos - 1) % total}")
+        )
+    row.append(InlineKeyboardButton("💬 Ask this one", callback_data=f"kw:ask:{date}:{pos}"))
+    if total > 1:
+        row.append(
+            InlineKeyboardButton("›", callback_data=f"kw:go:{date}:{(pos + 1) % total}")
+        )
+    return InlineKeyboardMarkup([row])
+
+
+def _candidates(date: str) -> list[int]:
+    """The tied leaders, in tally order. Recomputed on every tap rather than
+    stashed, so a knock landing while you deliberate is reflected instead of
+    leaving you choosing from a stale shortlist."""
+    tally = db.knock_tally(date)
+    if not tally:
+        return []
+    best = tally[0]["n"]
+    return [r["target_id"] for r in tally if r["n"] == best]
+
+
+async def send_candidates(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    date: str,
+    candidates: list[int],
+    pos: int,
+    message_id: int | None = None,
+) -> None:
+    """Show a leader as a picture with their name — one card, flipped in place
+    when several are tied. Admin-side, so it names names: this is the view the
+    reveal is decided from."""
+    if not candidates:
+        return
+    pos %= len(candidates)
+    target = candidates[pos]
+    photo = db.get_photo(date, target)
+    if photo is None:
+        return
+    u = db.get_user(target)
+    name = u["first_name"] if u else str(target)
+    photos = db.photos_for(date, include_excluded=True)
+    number = next(
+        (i for i, p in enumerate(photos, 1) if p["tg_id"] == target), "?"
+    )
+    knocks = len(db.knockers_for(date, target))
+    caption = f"#{number} · {name} · {knocks} × 🚪"
+    if len(candidates) > 1:
+        caption += f"\ntied leader {pos + 1} of {len(candidates)}"
+    keyboard = _candidate_keyboard(date, pos, len(candidates))
+
+    chat = update.effective_chat.id
+    handle = photo["file_id"]
+    media = handle or open(photo["file_path"], "rb")
+    try:
+        if message_id is not None:
+            await context.bot.edit_message_media(
+                chat_id=chat,
+                message_id=message_id,
+                media=InputMediaPhoto(media, caption=caption),
+                reply_markup=keyboard,
+            )
+        else:
+            await context.bot.send_photo(
+                chat, media, caption=caption, reply_markup=keyboard
+            )
+    finally:
+        if handle is None:
+            media.close()
+
+
+@admin_only
+async def on_knock_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """‹ › and 💬 under the candidate card from /knocks."""
+    query = update.callback_query
+    _, kind, date, pos = query.data.split(":")
+    candidates = _candidates(date)
+    if not candidates:
+        await query.answer("No knocks on that day any more.")
+        return
+    pos = int(pos) % len(candidates)
+
+    if kind == "go":
+        await query.answer()
+        await send_candidates(
+            update, context, date, candidates, pos, query.message.message_id
+        )
+        return
+
+    photo = db.get_photo(date, candidates[pos])
+    if photo is None:
+        await query.answer("That photo is gone.")
+        return
+    await query.answer("Asking…")
+    # Retire the buttons first: _send_story_ask replies into this chat, and a
+    # second tap would DM the author the same question twice.
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        log.debug("candidate keyboard clear failed for %s", date)
+    await _send_story_ask(update, context, date, photo)
 
 
 async def _send_story_ask(

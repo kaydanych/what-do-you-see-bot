@@ -57,6 +57,25 @@ CREATE TABLE IF NOT EXISTS collage_messages (
     message_id INTEGER NOT NULL,
     PRIMARY KEY (date, tg_id)
 );
+-- "Knock, knock": readers flip through the day's photos and knock on the one
+-- whose story they want. One knock each, and moving it is allowed while the
+-- window is open, hence the (date, tg_id) key rather than a row per tap.
+CREATE TABLE IF NOT EXISTS knocks (
+    date       TEXT NOT NULL,
+    tg_id      INTEGER NOT NULL,   -- who knocked
+    target_id  INTEGER NOT NULL,   -- whose photo they knocked on
+    knocked_at TEXT,
+    PRIMARY KEY (date, tg_id)
+);
+-- The mosaic arrangement, frozen at build time. The carousel walks the photos
+-- in the order the collage reads, and that order must survive a rebuild or a
+-- restart — recomputing it is how the image and the buttons drift apart.
+CREATE TABLE IF NOT EXISTS collage_cells (
+    date  TEXT NOT NULL,
+    idx   INTEGER NOT NULL,
+    tg_id INTEGER NOT NULL,
+    PRIMARY KEY (date, idx)
+);
 CREATE TABLE IF NOT EXISTS feedback (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     tg_id      INTEGER NOT NULL,
@@ -160,7 +179,13 @@ def init(path: Path | str | None = None) -> None:
                 ("proofer", "INTEGER NOT NULL DEFAULT 0"),
                 ("last_proofed_on", "TEXT"),
             ],
-            "photos": [("excluded", "INTEGER NOT NULL DEFAULT 0")],
+            # file_id: Telegram's own handle for the submitted photo. Re-sending
+            # it in the knock carousel costs one tiny API call instead of an
+            # upload, so a flip is instant.
+            "photos": [
+                ("excluded", "INTEGER NOT NULL DEFAULT 0"),
+                ("file_id", "TEXT"),
+            ],
             "days": [
                 ("moderation_sent_at", "TEXT"),
                 ("final_reminder_sent_at", "TEXT"),
@@ -404,7 +429,9 @@ def get_prompt(prompt_id: int) -> sqlite3.Row | None:
 
 # --- photos -----------------------------------------------------------------
 
-def upsert_photo(date: str, tg_id: int, file_path: str) -> bool:
+def upsert_photo(
+    date: str, tg_id: int, file_path: str, file_id: str | None = None
+) -> bool:
     """Store/replace a submission. Returns True if it replaced an earlier one."""
     replaced = (
         _exec(
@@ -413,12 +440,85 @@ def upsert_photo(date: str, tg_id: int, file_path: str) -> bool:
         is not None
     )
     _exec(
-        "INSERT INTO photos(date, tg_id, file_path, submitted_at) VALUES(?, ?, ?, ?) "
+        "INSERT INTO photos(date, tg_id, file_path, submitted_at, file_id) "
+        "VALUES(?, ?, ?, ?, ?) "
         "ON CONFLICT(date, tg_id) DO UPDATE SET file_path=excluded.file_path, "
-        "submitted_at=excluded.submitted_at",
-        (date, tg_id, file_path, _now()),
+        "submitted_at=excluded.submitted_at, file_id=excluded.file_id",
+        (date, tg_id, file_path, _now(), file_id),
     )
     return replaced
+
+
+def get_photo(date: str, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM photos WHERE date=? AND tg_id=?", (date, tg_id)
+    ).fetchone()
+
+
+def set_photo_file_id(date: str, tg_id: int, file_id: str) -> None:
+    """Remember Telegram's handle for a photo we've just uploaded, so the next
+    reader to reach it in the carousel gets it without another upload."""
+    _exec(
+        "UPDATE photos SET file_id=? WHERE date=? AND tg_id=?",
+        (file_id, date, tg_id),
+    )
+
+
+# --- knocks ("knock, knock, who's there") ------------------------------------
+
+def set_collage_cells(date: str, tg_ids: list[int]) -> None:
+    """Freeze the mosaic order for a date (idx 0 = first tile the collage
+    shows). Replaces any earlier arrangement, so a rebuilt collage re-registers
+    rather than leaving the carousel pointing at the old layout."""
+    _exec("DELETE FROM collage_cells WHERE date=?", (date,))
+    for idx, tg_id in enumerate(tg_ids):
+        _exec(
+            "INSERT INTO collage_cells(date, idx, tg_id) VALUES(?, ?, ?)",
+            (date, idx, tg_id),
+        )
+
+
+def collage_cells(date: str) -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM collage_cells WHERE date=? ORDER BY idx", (date,)
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def set_knock(date: str, tg_id: int, target_id: int) -> None:
+    """Record (or move) someone's single knock for the day."""
+    _exec(
+        "INSERT INTO knocks(date, tg_id, target_id, knocked_at) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(date, tg_id) DO UPDATE SET target_id=excluded.target_id, "
+        "knocked_at=excluded.knocked_at",
+        (date, tg_id, target_id, _now()),
+    )
+
+
+def get_knock(date: str, tg_id: int) -> int | None:
+    row = _exec(
+        "SELECT target_id FROM knocks WHERE date=? AND tg_id=?", (date, tg_id)
+    ).fetchone()
+    return row["target_id"] if row else None
+
+
+def knock_tally(date: str) -> list[sqlite3.Row]:
+    """Who got knocked on, most first. Ties break towards whoever reached that
+    count earliest, so a shared top is still resolved by the room, not a coin."""
+    return _exec(
+        "SELECT target_id, COUNT(*) AS n, MAX(knocked_at) AS last_at "
+        "FROM knocks WHERE date=? GROUP BY target_id "
+        "ORDER BY n DESC, last_at ASC",
+        (date,),
+    ).fetchall()
+
+
+def knockers_for(date: str, target_id: int) -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM knocks WHERE date=? AND target_id=? ORDER BY knocked_at",
+        (date, target_id),
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
 
 
 def photos_for(date: str, include_excluded: bool = False) -> list[sqlite3.Row]:

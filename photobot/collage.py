@@ -197,6 +197,23 @@ def _base_row_h(n: int) -> int:
     return 300
 
 
+def arrangement(photo_paths: list[Path], seed: int | None = None) -> list[Path]:
+    """The order the collage lays photos out in, left to right, top to bottom.
+
+    Split out of build_collage so callers can learn the arrangement without
+    rendering: the knock carousel walks the photos in this order and the mapping
+    has to be stored, not recomputed. Cheap — no image is decoded, since the
+    order is just the shuffle.
+    """
+    rng = random.Random(seed)
+    paths = [Path(p) for p in photo_paths if Path(p).exists()]
+    if len(paths) > config.COLLAGE_MAX_CELLS:
+        paths = rng.sample(paths, config.COLLAGE_MAX_CELLS)
+    order = list(range(len(paths)))
+    rng.shuffle(order)
+    return [paths[i] for i in order]
+
+
 def build_collage(
     photo_paths: list[Path],
     out_path: Path,
@@ -222,17 +239,12 @@ def build_collage(
     renders at a higher native resolution without changing its look — use it with
     a larger `max_side` (and `sendDocument`) to produce a zoomable file. At the
     default scale=1.0 / max_side=None the output is byte-identical to before."""
-    rng = random.Random(seed)
-    paths = [Path(p) for p in photo_paths if Path(p).exists()]
+    paths = arrangement(photo_paths, seed)
     if not paths:
         raise ValueError("no photos to build a collage from")
-
-    if len(paths) > config.COLLAGE_MAX_CELLS:
-        paths = rng.sample(paths, config.COLLAGE_MAX_CELLS)
     n = len(paths)
 
     images = [_load_rgb(p) for p in paths]
-    rng.shuffle(images)
 
     pad = int(config.COLLAGE_PAD * scale)
     gap = int(config.COLLAGE_GAP * scale)

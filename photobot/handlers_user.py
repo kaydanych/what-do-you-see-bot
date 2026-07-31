@@ -2,7 +2,12 @@ import asyncio
 import logging
 from collections import OrderedDict
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+    Update,
+)
 from telegram.error import NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
@@ -275,6 +280,97 @@ async def _answer(query, text: str | None = None) -> None:
         log.debug("callback answer failed (stale query)")
 
 
+async def _knock_photo(date: str, idx: int):
+    """The photo sitting in mosaic cell `idx`, or None if the cell is gone
+    (excluded after the collage went out)."""
+    cells = db.collage_cells(date)
+    if not 0 <= idx < len(cells):
+        return None
+    return db.get_photo(date, cells[idx])
+
+
+async def _show_knock_card(context, chat: int, date: str, idx: int, message_id=None):
+    """Open (or flip in place) the carousel card.
+
+    Nothing here identifies the author — no name, no filename, no position in
+    the collage. Sending by file_id keeps a flip to one small API call; the
+    first reader to reach a photo pays for the upload and everyone after them
+    rides on the id we cache.
+    """
+    total = len(db.collage_cells(date))
+    photo = await _knock_photo(date, idx)
+    if photo is None:
+        return
+    lang = db.get_user_lang(chat)
+    caption = t(lang, "KNOCK_EXPLAIN")
+    keyboard = jobs.knock_card_keyboard(date, idx, total)
+    handle = photo["file_id"]
+    media = handle or open(photo["file_path"], "rb")
+    try:
+        if message_id is not None:
+            msg = await context.bot.edit_message_media(
+                chat_id=chat,
+                message_id=message_id,
+                media=InputMediaPhoto(media, caption=caption),
+                reply_markup=keyboard,
+            )
+        else:
+            msg = await context.bot.send_photo(
+                chat, media, caption=caption, reply_markup=keyboard
+            )
+    finally:
+        if handle is None:
+            media.close()
+    if handle is None and msg and msg.photo:
+        db.set_photo_file_id(date, photo["tg_id"], msg.photo[-1].file_id)
+
+
+async def on_knock(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The knock carousel: open it, flip it, knock on a door.
+
+    Only that day's submitters may knock, one knock each (movable while the
+    window is open), and never on their own photo.
+    """
+    query = update.callback_query
+    parts = query.data.split(":")
+    kind, date = parts[1], parts[2]
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+
+    if not jobs.knock_open_for(date):
+        await _answer(query, t(lang, "KNOCK_CLOSED"))
+        return
+    if db.get_photo(date, uid) is None and uid not in config.ADMIN_IDS:
+        await _answer(query, t(lang, "KNOCK_NOT_YOURS"))
+        return
+
+    if kind == "open":
+        await _answer(query)
+        await _show_knock_card(context, uid, date, 0)
+        return
+
+    idx = int(parts[3])
+    if kind == "go":
+        await _answer(query)
+        await _show_knock_card(context, uid, date, idx, query.message.message_id)
+        return
+
+    photo = await _knock_photo(date, idx)
+    if photo is None:
+        await _answer(query)
+        return
+    if photo["tg_id"] == uid:
+        await _answer(query, t(lang, "KNOCK_OWN"))
+        return
+    moved = db.get_knock(date, uid) is not None
+    db.set_knock(date, uid, photo["tg_id"])
+    await _answer(query, t(lang, "KNOCK_MOVED" if moved else "KNOCK_TOAST"))
+    try:
+        await query.edit_message_caption(caption=t(lang, "KNOCK_DONE"))
+    except Exception:
+        log.debug("knock caption update failed for %s/%s", uid, date)
+
+
 async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Collage rating tap: store the vote, refresh tallies on every copy."""
     query = update.callback_query
@@ -288,7 +384,7 @@ async def on_rate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await _answer(query, t(lang, "RATE_THANKS", emoji=jobs.RATING_EMOJI[value]))
     if not changed:
         return
-    keyboard = jobs.rating_keyboard(date)
+    keyboard = jobs.collage_keyboard(date)
     for row in db.collage_messages_for(date):
         try:
             await context.bot.edit_message_reply_markup(
@@ -489,7 +585,13 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     finally:
         tmp.unlink(missing_ok=True)
 
-    replaced = db.upsert_photo(date, uid, str(dest))
+    # Keep Telegram's own handle for the photo: the knock carousel re-sends it
+    # by file_id, so a flip costs an API call instead of an upload. Only photos
+    # have one — a document upload is re-encoded on save, so its id wouldn't
+    # match what we stored.
+    replaced = db.upsert_photo(
+        date, uid, str(dest), msg.photo[-1].file_id if msg.photo else None
+    )
     if msg.media_group_id:
         await msg.reply_text(t(lang, "ALBUM_ONE"))
     elif replaced:
