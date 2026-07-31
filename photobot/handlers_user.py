@@ -592,12 +592,22 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     replaced = db.upsert_photo(
         date, uid, str(dest), msg.photo[-1].file_id if msg.photo else None
     )
+    # The streak lands here rather than on the evening collage: it's a private
+    # "well done, you", and it's worth more at the moment you showed up than
+    # hours later next to the thing everyone is looking at. A streak of 1 is
+    # just "showed up today", so it only starts counting at 2. Replacing a photo
+    # doesn't extend anything — you were already counted today.
+    streak = db.streaks_for(date).get(uid, 0) if not replaced else 0
+    tail = t(lang, "STREAK", days=streak) if streak >= 2 else ""
+
     if msg.media_group_id:
-        await msg.reply_text(t(lang, "ALBUM_ONE"))
+        await msg.reply_text(t(lang, "ALBUM_ONE") + tail)
     elif replaced:
         await msg.reply_text(t(lang, "REPLACED"))
     else:
-        await msg.reply_text(t(lang, "ACCEPTED", deadline=jobs.deadline_label(lang)))
+        await msg.reply_text(
+            t(lang, "ACCEPTED", deadline=jobs.deadline_label(lang)) + tail
+        )
 
 
 async def clear_awaiting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -870,16 +870,11 @@ async def send_collage(
     async def build(lang: str, *, hires: bool = False) -> Path:
         return await render_collage(date, lang, hires=hires, stem=stem)
 
-    def caption_for(uid: int, streak: int = 0) -> str:
+    def caption_for(uid: int) -> str:
         lang = db.get_user_lang(uid)
         if n == 1:
-            base = t(lang, "COLLAGE_CAPTION_SOLO")
-        else:
-            base = t(lang, "COLLAGE_CAPTION", n=n)
-        # A streak of 1 is just "showed up today" — only celebrate from 2 up.
-        if streak >= 2:
-            base += t(lang, "COLLAGE_STREAK", days=streak)
-        return base
+            return t(lang, "COLLAGE_CAPTION_SOLO")
+        return t(lang, "COLLAGE_CAPTION", n=n)
 
     fname = f"collage_{date}.jpg"
 
@@ -898,7 +893,6 @@ async def send_collage(
         return f"preview sent ({n} photos)"
 
     recipients = list(dict.fromkeys(db.submitter_ids(date) + list(config.ADMIN_IDS)))
-    streaks = db.streaks_for(date)
     langs = {lang_of(uid) for uid in recipients}
     # Render every needed collage up front (off the event loop) so each user then
     # gets the photo and the hi-res file back-to-back, not minutes apart.
@@ -913,7 +907,7 @@ async def send_collage(
     sent = 0
     for uid in recipients:
         lang = lang_of(uid)
-        caption = caption_for(uid, streaks.get(uid, 0))
+        caption = caption_for(uid)
         try:
             # Upload each collage to Telegram once, then reuse its file_id.
             if lang in photo_ids:

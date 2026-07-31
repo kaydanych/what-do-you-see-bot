@@ -43,7 +43,7 @@ ordinary day, and the small pleasure of seeing what nine other people found.
 | 👍 | One of them says no and it publishes itself. Most evenings end here |
 | every 10 min | Nobody tapped? It rolls to the next two or three |
 | your call | Or someone bans it — then you moderate (`/exclude 3`, `/preview`) and press send |
-| 🎉 | Everyone who played gets the card, their streak, and a row of rating buttons |
+| 🎉 | Everyone who played gets the card, a row of rating buttons, and the door to knock on |
 
 Times are Europe/Berlin, live in the DB, and change from the admin chat with
 `/settimes` — no restart, applies within a minute.
@@ -70,7 +70,10 @@ approved idea ships with the suggester's name baked in.
   because ten photos in one Telegram image get small
 - ❤️ **Ratings** — a row of emoji under each collage, tallies shared live
   across every copy
-- 🔥 **Streaks** — your run of consecutive days rides along in the caption
+- 🔥 **Streaks** — your run of consecutive days comes back the moment you
+  submit, as a private well-done
+- 🚪 **Knock, knock** — flip through the day's photos under the collage and
+  knock on the one whose story you want; one knock each, tallies hidden
 - 💬 **Story of the day** — the bot can ask one author why they chose their
   photo, and publish the answer to the whole group — in both languages if you
   pair it with a translation, with a ❤️ readers can leave on it
