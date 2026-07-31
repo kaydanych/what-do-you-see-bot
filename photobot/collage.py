@@ -58,33 +58,63 @@ def _aspect(img: Image.Image) -> float:
 
 def _justify(images: list[Image.Image], width: int, row_h: int, gap: int):
     """Group images into rows scaled to a common height, then stretch each
-    row to exactly `width`. Aspect ratios are preserved (no square crop);
-    the last row keeps natural height and centres if it is too sparse to
-    justify. Returns list of rows, each a list of (image, w, h)."""
-    rows: list[list[tuple[Image.Image, int]]] = []
-    cur: list[tuple[Image.Image, int]] = []
-    cur_w = 0
-    for im in images:
-        w = max(1, int(row_h * _aspect(im)))
-        if cur and cur_w + w + gap * len(cur) > width:
-            rows.append(cur)
-            cur, cur_w = [], 0
-        cur.append((im, w))
-        cur_w += w
-    if cur:
-        rows.append(cur)
+    row to exactly `width`. Aspect ratios are preserved (no square crop).
+    Returns list of rows, each a list of (image, w, h).
+
+    Row breaks are chosen globally rather than greedily: a row's cost is how
+    hard it had to be scaled to fit (log of the scale factor, squared), and we
+    minimise that over every possible set of breaks. Because the final row is
+    costed like any other, the layout naturally avoids leaving it a stub — the
+    thing the old greedy pass had to paper over with a "sparse last row" rule.
+    O(n^2) with n <= COLLAGE_MAX_CELLS, so a few thousand steps at worst.
+
+    Rows are held between COLLAGE_MIN_ROW_SCALE and COLLAGE_MAX_ROW_SCALE. The
+    floor stops a small day being crammed into one wide strip of tiny tiles; a
+    row that hits the ceiling is left narrower than `width` and the caller
+    centres it, which only happens when there aren't enough photos to fill one.
+    """
+    nat = [max(1, int(row_h * _aspect(im))) for im in images]
+    n = len(nat)
+    if not n:
+        return []
+
+    def scale_for(j: int, i: int) -> float:
+        """How much images[j:i] must be scaled to span exactly `width`."""
+        return (width - gap * (i - j - 1)) / sum(nat[j:i])
+
+    RAGGED = 0.4  # flat surcharge for a row that can't reach the full width
+
+    best = [0.0] + [float("inf")] * n
+    prev = [0] * (n + 1)
+    for i in range(1, n + 1):
+        for j in range(i - 1, -1, -1):
+            s = scale_for(j, i)
+            # adding images only shrinks s further, so once we're below the floor
+            # no longer row can help. j == i - 1 is always costed even if it
+            # breaks the bounds, so every i keeps a finite predecessor.
+            if s < config.COLLAGE_MIN_ROW_SCALE and j < i - 1:
+                break
+            # cost stays proportional to how wrong the row is even past the
+            # ceiling, so a stub row loses to a merely uneven one
+            cost = math.log(s) ** 2
+            if s > config.COLLAGE_MAX_ROW_SCALE:
+                cost += RAGGED
+            if best[j] + cost < best[i]:
+                best[i], prev[i] = best[j] + cost, j
+
+    cuts, i = [n], n
+    while i:
+        i = prev[i]
+        cuts.append(i)
+    cuts.reverse()
 
     out: list[list[tuple[Image.Image, int, int]]] = []
-    for i, row in enumerate(rows):
-        total = sum(w for _, w in row)
-        gaps = gap * (len(row) - 1)
-        last = i == len(rows) - 1
-        if last and total + gaps < width * 0.62:
-            scale = 1.0  # sparse final row: don't blow tiles up to full width
-        else:
-            scale = (width - gaps) / total
+    for j, i in zip(cuts, cuts[1:]):
+        scale = min(scale_for(j, i), config.COLLAGE_MAX_ROW_SCALE)
         h = max(1, int(row_h * scale))
-        out.append([(im, max(1, int(w * scale)), h) for im, w in row])
+        out.append(
+            [(images[k], max(1, int(nat[k] * scale)), h) for k in range(j, i)]
+        )
     return out
 
 

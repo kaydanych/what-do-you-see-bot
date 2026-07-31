@@ -62,6 +62,13 @@ COLLAGE_GAP = 14              # space between tiles
 COLLAGE_PAD = 48              # outer margin
 COLLAGE_ASPECT_MIN = 0.55     # clamp extreme portraits (below this = mild crop)
 COLLAGE_ASPECT_MAX = 1.9      # clamp extreme panoramas
+COLLAGE_MAX_ROW_SCALE = 1.6   # how far a row may be stretched to fill the width.
+                              # Only bites when there are too few photos to fill
+                              # a row at all (a 1-photo day) — such a row stops
+                              # here and gets centred instead of ballooning.
+COLLAGE_MIN_ROW_SCALE = 0.85  # ...and how far it may be squeezed. Stops the
+                              # layout cramming a whole small day into one wide
+                              # strip of tiny tiles just to avoid a short row.
 
 # Zoomable hi-res companion file. On busy days the compressed collage photo is
 # too small to read, so alongside it we send the same card rendered at a higher
