@@ -4,7 +4,7 @@ import io
 import logging
 import random
 from datetime import date as date_cls
-from datetime import time
+from datetime import time, timedelta
 
 from telegram import (
     InlineKeyboardButton,
@@ -697,21 +697,61 @@ async def cmd_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def cmd_knocks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/knocks [date] — the night's tally. Deliberately manual: you read the
     result and decide whether it's a winner worth asking, rather than the bot
-    asking on its own."""
-    msg = update.effective_message
-    date = _parse_date_arg(context.args[0] if context.args else None)
-    if date is None:
-        await msg.reply_text("Usage: /knocks [YYYY-MM-DD] (default: today)")
-        return
+    asking on its own.
 
+    With no date it reports every day that currently has knocking on it, which
+    for most of the day means *yesterday's* collage: today's doesn't open until
+    tonight's collage is published, so defaulting to today just showed an empty
+    board while the live vote was still running.
+    """
+    msg = update.effective_message
+    if context.args:
+        date = _parse_date_arg(context.args[0])
+        if date is None:
+            await msg.reply_text("Usage: /knocks [YYYY-MM-DD] (default: live days)")
+            return
+        dates = [date]
+    else:
+        dates = _live_knock_days()
+
+    for date in dates:
+        await _knock_report(update, context, date)
+
+
+def _live_knock_days() -> list[str]:
+    """Yesterday and today — both, because for most of the day they're at
+    different stages: last night's vote is still running while today's photos
+    are only coming in. A date is skipped only if nothing happened on it at
+    all."""
+    today = jobs.now_local().date()
+    days = [d.isoformat() for d in (today - timedelta(days=1), today)]
+    live = [d for d in days if db.get_day(d) or db.knock_tally(d)]
+    return live or [today.isoformat()]
+
+
+async def _knock_report(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, date: str
+) -> None:
+    msg = update.effective_message
     tally = db.knock_tally(date)
     photos = db.photos_for(date, include_excluded=True)
     number_of = {p["tg_id"]: i for i, p in enumerate(photos, 1)}
     voters = len(db.photos_for(date))
-    state = "open" if jobs.knock_open_for(date) else "closed"
+    day = db.get_day(date)
+    if not day or not day["collage_sent_at"]:
+        state = "not open yet"  # knocking starts when the collage is published
+    else:
+        state = "open" if jobs.knock_open_for(date) else "closed"
 
     if not tally:
-        await msg.reply_text(f"🚪 {date}: nobody knocked yet ({state}).")
+        if state == "not open yet":
+            n_in = len(db.photos_for(date))
+            await msg.reply_text(
+                f"🚪 {date}: knocking opens when the collage goes out "
+                f"({n_in} photo(s) in so far)."
+            )
+        else:
+            await msg.reply_text(f"🚪 {date}: nobody knocked yet ({state}).")
         return
 
     lines = []

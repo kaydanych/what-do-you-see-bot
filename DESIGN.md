@@ -241,7 +241,7 @@ happens in the bot chat:
 | `/forcecollage [date]` | Build & send the collage after review (this is the ONLY way it goes out) |
 | `/delcollage [date]` | Delete a sent collage from every chat (≤48 h) and reset the day |
 | `/preview` | Build the collage and send it **only to admin** — dry run (keeps the hi-res zoom file) |
-| `/knocks [date]` | The night's knock tally (§11a), then the leader(s) as pictures with 💬 to ask that author |
+| `/knocks [date]` | The knock tally (§11a), then the leader(s) as pictures with 💬 to ask that author. No date = yesterday *and* today, since last night's vote runs while today's photos are still coming in |
 | `/proofers`, `/proofer <id\|@user>` | The standing trusted list a nightly batch is drawn from (§4a); adding is silent |
 | `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
