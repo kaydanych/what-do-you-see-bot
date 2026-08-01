@@ -1,7 +1,7 @@
 # Photobot — Daily Photo Prompt & Collage Bot
 
-**Status:** v1 implemented (see README.md), pending live Telegram test
-**Date:** 2026-07-04
+**Status:** implemented and deployed; actively developed (see README.md)
+**Updated:** 2026-08-01
 
 ## 1. Concept
 
@@ -11,6 +11,26 @@ a photo with water"). Participants reply with a photo before the evening
 deadline. The bot assembles all submissions into a single collage and sends it
 back — **only to the people who submitted that day**. Next morning, a new
 prompt; the cycle repeats.
+
+## 1a. Production topology and source of truth
+
+The project is a single loop across **GitHub → Synology NAS ↔ Telegram**:
+
+- **GitHub `main` owns the code.** Development happens locally on the Mac and a
+  commit + push is the production release action.
+- **The Synology NAS owns runtime state.** A DSM Task Scheduler job checks
+  GitHub every five minutes; `update.sh` resets the checkout to `origin/main`
+  and restarts the container for code-only changes or rebuilds it for Docker or
+  dependency changes. SQLite, submitted photos, logs and deploy metadata live
+  under `data/` on the NAS and are not stored in GitHub.
+- **Telegram is the complete product and admin surface.** The NAS container
+  long-polls the Telegram Bot API; prompts, submissions, moderation, proofing,
+  collages and admin commands all travel through bot chats. The NAS exposes no
+  inbound application port.
+
+Operational rule: never edit production code on the NAS. `update.sh` uses
+`git reset --hard origin/main`, so GitHub deliberately replaces any such edit
+on the next deployment. Back up `data/`; deploy code through GitHub.
 
 ## 2. Platform & stack
 
@@ -34,8 +54,9 @@ prompt; the cycle repeats.
   user's language. `/lang` switches at any time.
 - Both language tables live in one `strings.py` module; a test enforces that
   RU and EN have identical keys and placeholders, so they can't drift apart.
-- **Prompts are sent verbatim** as written in the library — Russian, English,
-  or mixed, whatever Nikita puts in.
+- Prompt records have an English primary/fallback text and an optional Russian
+  translation. Each user receives the matching text verbatim; if Russian is
+  absent, everyone receives the English/primary text.
 - Admin interface stays English.
 
 ## 4. Daily lifecycle (Europe/Berlin; times live in the DB and are changed from the admin chat via `/settimes` — applied within a minute, no restart)
@@ -60,8 +81,8 @@ if the deadline passed but no moderation sheet went out, it sends it. NAS
 reboots and DSM updates therefore can't silently kill a day.
 
 **Zero/one submissions:** 0 photos → no collage, admin gets a note. 1 photo →
-that user gets their own photo back as a 2×2 mini-collage with a friendly note
-(still fun, keeps the ritual).
+that user gets a one-photo card with a friendly solo caption (no duplicated
+filler; it still keeps the ritual).
 
 ## 4a. Collage proofing (delegated pre-publish check)
 
@@ -163,13 +184,14 @@ prompt and whether your photo is in).
 
 ## 6. Prompt library
 
-- Table `prompts(id, text, text_en, used_on, added_by, added_at)` — prompts are
-  **bilingual**: `text` (RU/primary) is sent to Russian-language users, `text_en`
-  to English ones; if `text_en` is missing everyone gets the primary text as-is.
+- Table `prompts(id, text, text_ru, used_on, added_by, added_at)` — prompts are
+  **bilingual**: `text` is English and the primary/fallback value; `text_ru` is
+  the optional Russian translation. Russian-language users receive `text_ru`
+  when present, otherwise everyone receives `text`.
 - Admin adds prompts by:
-  - `/addprompt Пришли фото с водой | Send a photo with water` — the `| EN` part
-    is optional;
-  - sending a **`.txt` file** to the bot (one prompt per line, same `RU | EN`
+  - `/addprompt Send a photo with water | Пришли фото с водой` — the `| RU`
+    part is optional;
+  - sending a **`.txt` file** to the bot (one prompt per line, same `EN | RU`
     format) — bulk import.
 - `/prompts` lists all with IDs and used/unused status; `/delprompt <id>` removes.
 - Selection: random among unused. When **fewer than 7 unused** remain, the
@@ -200,30 +222,35 @@ prompt and whether your photo is in).
 ```
 
 - ~100 photos/day ≈ 30–80 MB/day ≈ under 30 GB/year — nothing for a NAS.
-  Optional retention config: delete daily photos after N days, keep collages
-  forever (default: keep everything).
+  Current behavior is to keep everything. Automatic retention is not
+  implemented; whether to add it remains a product decision (§15).
 
 ## 8. Collage algorithm
 
-Goal: a clean filled rectangle regardless of how many photos came in, using
-random duplicates as filler — per Nikita's spec.
+Goal: a portrait-oriented editorial card that gives every submission one tile
+and preserves the character of differently shaped photographs.
 
-1. `N` = number of submissions. Cell = 600×600 px square.
-2. Choose grid: `cols = ceil(sqrt(N * 4/3))`, `rows = ceil(N / cols)` —
-   roughly 4:3 landscape. Cap at 12×9 (108 cells) so the file stays reasonable.
-3. `cells = cols × rows`; the `cells − N` extra slots are filled with
-   duplicates drawn randomly from the submissions (max 1 duplicate per user
-   until everyone has one, then round-robin — nobody's photo dominates).
-4. Shuffle all cell assignments so duplicates aren't adjacent to originals
-   (retry shuffle a few times if they are).
-5. Each photo is **center-cropped to a square** and resized to the cell.
-6. Optional 4 px white gutter between cells (config flag).
-7. Output JPEG quality 85. Sent as a Telegram *photo* (Telegram recompresses);
-   config flag to also send as *document* for full quality.
+1. Shuffle the day's photos with a stable date-derived seed. English and
+   Russian renders therefore share the same order, and a restart cannot change
+   the mosaic beneath an open knock carousel.
+2. Cap the card at 108 submissions. No photo is duplicated to fill space.
+3. Lay photos into justified rows. A global row-break pass minimizes how much
+   each row must stretch or shrink, avoiding both a tiny final stub and one
+   overpacked strip.
+4. Preserve each normal aspect ratio; only extreme portraits/panoramas are
+   mildly cropped. Tiles have rounded corners and sit on a dark mat.
+5. Grow the card width with the square root of the photo count so small and
+   busy days retain a useful phone-friendly aspect. Center any row that cannot
+   naturally span the full width.
+6. Add a localized date/day-number and prompt header plus a participant-count
+   footer. Downscale the final JPEG to at most 4000 px on its long side.
+7. Publish the card as a Telegram photo. Readers inspect individual originals
+   through the knock carousel; only admin `/preview` also receives a larger
+   non-recompressed card when the day is busy enough.
 
-Worst case (100 photos, 108 cells at 600 px) ≈ 7200×5400 px before Telegram's
-photo cap — the bot downscales the final canvas to max 4000 px on the long
-side before sending. Generation time on NAS-grade CPU: seconds.
+The numbered moderation contact sheet is deliberately separate: it uses square
+cells, contains every submission once, and keeps stable numbers for `/exclude`,
+`/include` and `/ban`.
 
 ## 9. Admin — troubleshooting without touching code
 
@@ -291,9 +318,13 @@ services:
 5. Backup: `/volume1/docker/photobot/` is a normal share — include it in the
    existing Hyper Backup task. SQLite is snapshot-safe at this write volume.
 
-Development flow: build & test locally on the Mac (same Docker image, test bot
-token), then copy the folder to the NAS and `docker compose up -d`. Updates =
-copy new code, rebuild container; DB and photos live in the volume and survive.
+Development flow: build and test locally on the Mac, commit, then push to
+GitHub `main`. A DSM Task Scheduler job runs `update.sh` every five minutes;
+the NAS fetches `origin/main`, hard-resets its code checkout, and either
+restarts the existing container (code-only changes) or rebuilds it (dependency
+or Docker changes). The DB and photos stay in the gitignored `data/` directory
+and survive every deployment. See `docs/deploy-synology.md` for the complete
+runbook.
 
 ## 12. Data model (SQLite)
 
@@ -301,8 +332,8 @@ copy new code, rebuild container; DB and photos live in the volume and survive.
 users   (tg_id PK, first_name, username, status TEXT       -- pending|active|
          , joined_at, kicked_at, lang, proofer INT,        -- inactive|kicked
          last_proofed_on)                                  -- pending = awaiting ✅ (§5)
-prompts (id PK, text, source TEXT DEFAULT 'library', used_on DATE NULL,
-         added_by, added_at)
+prompts (id PK, text, text_ru, source TEXT DEFAULT 'library', used_on DATE NULL,
+         added_by, added_at)                              -- text = EN/fallback
 days    (date PK, prompt_id FK, prompt_sent_at, collage_sent_at,
          skipped INT DEFAULT 0)
 photos  (date FK, tg_id FK, file_path, submitted_at, file_id,  -- file_id: reused
@@ -318,9 +349,9 @@ collage_messages (date, tg_id, message_id,                   -- per-user copy of
 proof_asks (date, tg_id, round_no, message_id, asked_at,     -- pre-publish check (§4a);
          value TEXT, note, voted_at,                         -- value: approve|ban,
          PRIMARY KEY (date, tg_id))                          -- NULL until they decide
-week_cards (week_end, tg_id, days, streak, status TEXT,      -- one perfect week
+week_cards (week_end, tg_id, days, streak, status TEXT,      -- personal week card
          file_id, offered_at, decided_at,                    -- (§12b); status:
-         PRIMARY KEY (week_end, tg_id))                      -- offered|shared|kept
+         PRIMARY KEY (week_end, tg_id))                      -- offered|shared|kept|gift
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```
@@ -467,10 +498,9 @@ handlers on the test bot with both fan-outs narrowed to one chat.
 - Public (user-facing) stats — /stats exists but is admin-only for now (§12a)
 - Multiple photos per user in the collage
 
-## 15. Open questions for Nikita
+## 15. Remaining product decisions
 
-1. **Join policy** — open link + kick, or explicit admin approval per user? (§5)
-2. **Deadline 22:00 / prompt 09:00 / reminder 20:00** — good defaults?
-3. Collage back **only to submitters** is confirmed; should the admin-received
+1. Collage back **only to submitters** is confirmed; should the admin-received
    copy also go to a private archive channel? (Nice history-keeping, 1 line of code.)
-4. Photo retention: keep dailies forever (default) or auto-delete after N days?
+2. Photo retention: keep dailies forever (current behavior) or auto-delete
+   source photos after N days while preserving collages?

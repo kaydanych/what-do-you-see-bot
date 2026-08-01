@@ -24,6 +24,26 @@
 
 ---
 
+## Where the project lives
+
+Photobot is one production loop across **GitHub → NAS ↔ Telegram**:
+
+1. **GitHub (`main`) is the source of truth for code.** Development happens on
+   the Mac, then a commit and push publish the next version.
+2. **The Synology NAS is the runtime and data home.** Every five minutes it
+   checks GitHub, resets its checkout to `origin/main`, then restarts the
+   container for code-only changes or rebuilds it when dependencies changed.
+   Its `data/` directory holds the SQLite database and photos and never belongs
+   in Git.
+3. **Telegram is the product surface.** The container long-polls the Telegram
+   Bot API, receives commands and photos, and sends prompts, moderation views,
+   collages and community interactions back to people's chats. No inbound NAS
+   ports are exposed.
+
+In short: **push code to GitHub; let the NAS deploy it; use and administer the
+running bot through Telegram.** Never edit production code directly on the NAS,
+because the next deploy deliberately overwrites it.
+
 Every morning the bot sends everyone the same tiny creative prompt. Each person
 replies with **one** photo before the evening deadline. Then the bot stitches
 that day's photos into a single card and sends it back — **only to the people
@@ -66,8 +86,10 @@ approved idea ships with the suggester's name baked in.
 
 - 🖼 **A card, not a grid** — a justified mosaic that adapts to however many
   photos came in, with the date, the prompt and the day number on it
-- 🔍 **Tap to zoom** — busy days also arrive as an uncompressed hi-res file,
-  because ten photos in one Telegram image get small
+- 🔍 **Tap through the originals** — the published collage opens a private
+  carousel of that day's photos. A non-recompressed hi-res card is reserved
+  for admin `/preview`, where it is useful for moderation without doubling
+  every participant's delivery
 - ❤️ **Ratings** — a row of emoji under each collage, tallies shared live
   across every copy
 - 🔥 **Streaks** — your run of consecutive days comes back the moment you
@@ -89,8 +111,8 @@ approved idea ships with the suggester's name baked in.
 - 🧹 **Moderation first** — nothing is published until somebody has looked at it
 - 🌍 **Per-user language** — everyone reads the bot, and gets the collage, in
   EN or RU
-- 🏠 **Yours** — long polling means no open ports; the photos never leave your
-  machine
+- 🏠 **Yours** — long polling means no open ports, and the persistent photo
+  archive stays on the NAS rather than a separate hosting or storage service
 
 ## Run it
 
@@ -143,12 +165,14 @@ change can't silently kill a day.
 
 ## Deploying
 
-Anywhere Docker runs. The setup this one actually lives on — a Synology NAS
-that redeploys itself on `git push` — is written up in
+Anywhere Docker runs. In production, GitHub `main` is the code source of truth,
+the Synology NAS is the runtime and persistent data store, and Telegram is the
+only user/admin interface. The NAS redeploys itself after `git push`; the exact
+setup is written up in
 **[docs/deploy-synology.md](docs/deploy-synology.md)**.
 
-The DB and photos live in `data/`, outside the image. That's the only thing to
-back up.
+The DB and photos live only in the NAS `data/` directory, outside both the
+container image and Git. That's the only thing to back up.
 
 ## Under the hood
 
