@@ -300,6 +300,10 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     t = get_times()
     day = db.get_day(today)
 
+    # The weekly card rides on its own clock, not the day's — it must still fire
+    # on a skipped day, and it must not be starved by the early returns below.
+    await maybe_offer_week_cards(context, now)
+
     # Admin-only heads-up (after the day's deadline) of what tomorrow's prompt
     # will be. Fires regardless of whether today ran or was skipped, so it also
     # confirms a queue that was refilled after an empty day.
@@ -951,3 +955,252 @@ async def send_collage(
         await close_proof_asks(context, date, "PROOF_CLOSED_PUBLISHED")
     await notify_admins(context, f"🖼 {date}: collage from {n} photos sent to {sent}.")
     return f"sent to {sent}"
+
+
+# --- the weekly card ----------------------------------------------------------
+#
+# Sunday evening, everyone who didn't miss a day gets their own week back as one
+# picture. Three things keep it from turning into a leaderboard: it is a line you
+# cross, not a place you finish (so it's usually a handful of people, and a
+# different handful each week); the card is sent to its author alone; and the
+# group only ever sees it if the author taps "show everyone". Nobody is ranked in
+# public, and nobody is congratulated in public without being asked first.
+#
+# The window ends *yesterday*, so on Sunday the card covers Sun–Sat and can't
+# name the author of a photo whose knock window (§11a) is still open.
+
+
+def week_card_keyboard(week_end: str, lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton(t(lang, "WEEK_BTN_SHARE"), callback_data=f"wk:s:{week_end}")],
+            [InlineKeyboardButton(t(lang, "WEEK_BTN_KEEP"), callback_data=f"wk:k:{week_end}")],
+        ]
+    )
+
+
+def week_end_for(today: date_cls) -> str:
+    return (today - timedelta(days=1)).isoformat()
+
+
+def last_week_run(now: datetime) -> date_cls:
+    """The most recent scheduled weekly moment at or before `now`. Comparing
+    against this (rather than 'is it Sunday right now?') is what makes the job
+    survive a NAS reboot over the weekend — it runs late instead of never."""
+    dow = int(db.get_setting("week_card_dow"))
+    at = parse_hhmm(db.get_setting("week_card_time"))
+    back = (now.weekday() - dow) % 7
+    run = now.date() - timedelta(days=back)
+    if back == 0 and now.time() < at:
+        run -= timedelta(days=7)
+    return run
+
+
+async def maybe_offer_week_cards(
+    context: ContextTypes.DEFAULT_TYPE, now: datetime
+) -> None:
+    """Fire the weekly offers once per week, from the same one-minute tick as
+    everything else — so the time is DB-editable and a late start still runs."""
+    if db.get_setting("week_card_enabled") != "1":
+        return
+    week_end = week_end_for(last_week_run(now))
+    if db.get_setting("week_card_last") == week_end:
+        return
+    if not db.get_setting("week_card_last"):
+        # First run ever: arm the job rather than retro-celebrating a week that
+        # ended before the feature existed.
+        db.set_setting("week_card_last", week_end)
+        return
+    await offer_week_cards(context, week_end)
+
+
+def week_card_path(week_end: str, tg_id: int) -> Path:
+    return config.PHOTOS_DIR / "weeks" / week_end / f"u{tg_id}.jpg"
+
+
+async def render_week_card(
+    week_end: str, tg_id: int, dates: list[str], streak: int
+) -> Path | None:
+    """Render one person's week off the event loop (same reason as the collage:
+    Pillow is CPU-bound and the NAS is slow). None if too few of their photos
+    survive on disk to still be a week."""
+    photos = {p["date"]: Path(p["file_path"]) for p in db.photos_on(tg_id, dates)}
+    if len(photos) < config.WEEK_MIN_PHOTOS:
+        return None
+    user = db.get_user(tg_id)
+    return await asyncio.to_thread(
+        collage.build_week_card,
+        photos,
+        week_card_path(week_end, tg_id),
+        name=(user["first_name"] if user else str(tg_id)),
+        dates=dates,
+        lang=lang_of(tg_id),
+        streak=streak,
+    )
+
+
+def tied_leaders(board: list[dict]) -> list[dict]:
+    """Everyone sharing the longest streak on the board. A run of 1 isn't a
+    streak, so a week where nobody strung two days together has no leader."""
+    if not board or board[0]["streak"] < 2:
+        return []
+    return [r for r in board if r["streak"] == board[0]["streak"]]
+
+
+def pick_leader(week_end: str, board: list[dict]) -> dict | None:
+    """The one person congratulated this week.
+
+    Ties are real and will stay real: two people who never miss are level
+    forever, so a fixed tie-break would crown one of them every week until one
+    of them slipped, and the other would never once be named. So the crown
+    **rotates** — among everyone on the longest streak, it goes to whoever has
+    been crowned least recently (never > longest ago), and only then to the
+    fuller week, the longer history, and finally the id, so the answer is always
+    a single deterministic person."""
+    tied = tied_leaders(board)
+    if not tied:
+        return None
+    if len(tied) == 1:
+        return tied[0]
+    last = db.last_crowned(week_end)
+    return min(
+        tied,
+        key=lambda r: (last.get(r["tg_id"], ""), -r["days"], -r["total"], r["tg_id"]),
+    )
+
+
+def week_cast(week_end: str) -> tuple[list[str], list[dict], dict | None]:
+    """Who this week's cards are for: the window's collage days, everyone with a
+    full-enough week to be handed one, and the single streak leader among them."""
+    dates = db.week_days(week_end, config.WEEK_SPAN_DAYS)
+    if len(dates) < config.WEEK_MIN_DAYS:
+        return dates, [], None
+    board = [
+        r
+        for r in db.week_board(week_end, config.WEEK_SPAN_DAYS)
+        if r["days"] >= config.WEEK_MIN_PHOTOS
+    ]
+    return dates, board, pick_leader(week_end, board)
+
+
+async def offer_week_cards(
+    context: ContextTypes.DEFAULT_TYPE, week_end: str, *, only: int | None = None
+) -> str:
+    """Hand everyone their own week back, and ask the streak leader — and only
+    them — whether the group should see theirs.
+
+    Everyone else's card carries no buttons at all: it's a gift, not a
+    nomination, so there's nothing to decide and nothing to feel second about.
+
+    Idempotent: a row in week_cards means that person already got this week, so
+    a restart (or a second /weekcard) can't send it twice."""
+    dates, board, leader = week_cast(week_end)
+    if len(dates) < config.WEEK_MIN_DAYS:
+        return f"only {len(dates)} collage day(s) in the week ending {week_end} — skipped"
+    if only is not None:
+        board = [r for r in board if r["tg_id"] == only]
+
+    active = set(db.active_user_ids())
+    sent = skipped = 0
+    won = ""
+    names = []
+    for row in board:
+        uid = row["tg_id"]
+        if uid not in active or db.get_week_card(week_end, uid):
+            skipped += 1
+            continue
+        is_leader = leader is not None and uid == leader["tg_id"]
+        try:
+            card = await render_week_card(week_end, uid, dates, row["streak"])
+            if card is None:
+                log.warning("week card %s/%s: photos missing", week_end, uid)
+                skipped += 1
+                continue
+            lang = db.get_user_lang(uid)
+            if is_leader:
+                text = t(
+                    lang, "WEEK_CARD",
+                    n=row["streak"], k=row["days"], of=len(dates),
+                )
+                keyboard = week_card_keyboard(week_end, lang)
+            else:
+                text = t(lang, "WEEK_GIFT", k=row["days"], of=len(dates))
+                # Only worth mentioning when the run reaches past this week.
+                if row["streak"] > row["days"]:
+                    text += t(lang, "WEEK_GIFT_STREAK", n=row["streak"])
+                keyboard = None
+            db.add_week_card(
+                week_end, uid, row["days"], row["streak"],
+                status="offered" if is_leader else "gift",
+            )
+            with open(card, "rb") as f:
+                msg = await context.bot.send_photo(
+                    uid, f, caption=text, reply_markup=keyboard
+                )
+            db.set_week_card_file_id(week_end, uid, msg.photo[-1].file_id)
+            sent += 1
+            u = db.get_user(uid)
+            name = u["first_name"] if u else str(uid)
+            if is_leader:
+                tied = len(tied_leaders(board))
+                won = (
+                    f"👑 {name} ({row['streak']}🔥"
+                    + (f", tie of {tied} — rotated" if tied > 1 else "")
+                    + ") was asked to share; "
+                )
+            else:
+                names.append(f"{name} {row['days']}/{len(dates)}")
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            skipped += 1
+        except Exception:
+            log.exception("week card %s to %s failed", week_end, uid)
+            skipped += 1
+
+    db.set_setting("week_card_last", week_end)
+    note = (
+        f"🗓 Week ending {week_end} ({len(dates)} collage days): {won}"
+        f"{sent} card(s) sent"
+        + (f" — {', '.join(names)}" if names else "")
+        + (f", {skipped} skipped" if skipped else "")
+    )
+    await notify_admins(context, note)
+    return note
+
+
+def share_audience(tg_id: int) -> list[int]:
+    """Who a shared week card reaches: everyone in the game except its author,
+    who is looking at it already. (A seam the lab script narrows to one chat.)"""
+    return [uid for uid in db.active_user_ids() if uid != tg_id]
+
+
+async def share_week_card(
+    context: ContextTypes.DEFAULT_TYPE, week_end: str, tg_id: int
+) -> int:
+    """Publish an approved card to everyone else. Returns how many got it."""
+    row = db.get_week_card(week_end, tg_id)
+    user = db.get_user(tg_id)
+    name = user["first_name"] if user else str(tg_id)
+    audience = share_audience(tg_id)
+    file_id = row["file_id"] if row else None
+    path = week_card_path(week_end, tg_id)
+    sent = 0
+    for uid in audience:
+        caption = t(db.get_user_lang(uid), "WEEK_CARD_PUBLIC", name=name, n=row["streak"])
+        try:
+            if file_id:
+                await context.bot.send_photo(uid, file_id, caption=caption)
+            else:  # card never made it to Telegram (or DB predates file_id)
+                with open(path, "rb") as f:
+                    msg = await context.bot.send_photo(uid, f, caption=caption)
+                file_id = msg.photo[-1].file_id
+                db.set_week_card_file_id(week_end, tg_id, file_id)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+        except Exception:
+            log.exception("week card share %s/%s to %s failed", week_end, tg_id, uid)
+    await notify_admins(
+        context, f"🖼 {name} shared their week ({week_end}) — sent to {sent}."
+    )
+    return sent

@@ -143,6 +143,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
     app.add_handler(CallbackQueryHandler(usr.on_knock, pattern=r"^kn:"))
     app.add_handler(CallbackQueryHandler(usr.on_story_like, pattern=r"^story:"))
+    app.add_handler(CallbackQueryHandler(usr.on_week_card, pattern=r"^wk:"))
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
     app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
 
@@ -175,6 +176,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("kick", adm.cmd_kick))
     app.add_handler(CommandHandler("unkick", adm.cmd_unkick))
     app.add_handler(CommandHandler("stats", adm.cmd_stats))
+    app.add_handler(CommandHandler("weekcard", adm.cmd_weekcard))
+    app.add_handler(CommandHandler("weekcards", adm.cmd_weekcards))
     app.add_handler(CommandHandler("suggestions", adm.cmd_suggestions))
     app.add_handler(CommandHandler("feedback_all", adm.cmd_feedback_all))
     app.add_handler(CommandHandler("poll", adm.cmd_poll))

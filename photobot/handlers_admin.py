@@ -106,7 +106,20 @@ decided, the question is deleted from anyone who hadn't answered.
 /editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
 /publishstory <id> — send that photo + story to everyone in the game (reveals the author's name); it carries a ❤️ button with a live shared tally
 /publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
-/dismissstory <id> — discard a story"""
+/dismissstory <id> — discard a story
+
+🗓 Week card (Sunday 17:00, one person's own week back as one picture)
+Everyone with 5+ of the week's days gets their week rendered and sent to them —
+buttonless, a gift, nothing to decide. The streak leader alone is congratulated
+and asked «show everyone» / «keep it», and only their tap sends it to the group.
+Ties on the longest streak rotate: the crown goes to whoever was crowned least
+recently. The window ends the day *before* it runs (Sun–Sat), so it ignores
+Sunday's open submissions and never names an author whose knocks are still live.
+/weekcard — who qualifies for the current window (dry run, sends nothing)
+/weekcard send [YYYY-MM-DD] — offer the cards now (default window = ends yesterday)
+/weekcard me [YYYY-MM-DD] — same, but only your own card (safe way to look at it)
+/weekcards [YYYY-MM-DD] — what each author decided that week
+/settimes week=sun@21:45 | week=off — when it runs (or turn it off)"""
 
 
 # How each user status reads in a list. '⏳' is a newcomer still waiting for a
@@ -369,9 +382,11 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"reminder = {db.get_setting('reminder_time')}\n"
         f"final = {db.get_setting('final_reminder_min')} min before deadline\n"
         f"deadline = {db.get_setting('deadline_time')}\n"
-        f"preview = {db.get_setting('preview_time')} (admin heads-up: tomorrow's prompt)\n\n"
+        f"preview = {db.get_setting('preview_time')} (admin heads-up: tomorrow's prompt)\n"
+        f"week card = {_week_schedule_label()}\n\n"
         "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10\n"
         "(any subset; applies within a minute, no restart needed)\n"
+        "Week card: /settimes week=sun@21:45 (or week=off)\n"
         "Collage: sent manually after your review — /forcecollage."
     )
 
@@ -384,6 +399,36 @@ KEY_MAP = {
     "preview": "preview_time",
 }
 
+DOW_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def _week_schedule_label() -> str:
+    if db.get_setting("week_card_enabled") != "1":
+        return "off"
+    dow = DOW_NAMES[int(db.get_setting("week_card_dow"))]
+    return f"{dow}@{db.get_setting('week_card_time')} (covers the 7 days ending the day before)"
+
+
+def _parse_week_arg(val: str) -> dict[str, str]:
+    """'off' | 'on' | 'sun@21:45' | '21:45' -> the settings to write.
+
+    Its own shape because the week card is the one job that needs a weekday as
+    well as a clock time; everything else in /settimes is HH:MM or minutes."""
+    val = val.strip().lower()
+    if val in ("off", "on"):
+        return {"week_card_enabled": "1" if val == "on" else "0"}
+    dow, sep, hhmm = val.partition("@")
+    if not sep:
+        dow, hhmm = "", val
+    out = {"week_card_enabled": "1"}
+    if dow:
+        if dow not in DOW_NAMES:
+            raise ValueError(f"unknown weekday «{dow}» (use {'/'.join(DOW_NAMES)})")
+        out["week_card_dow"] = str(DOW_NAMES.index(dow))
+    jobs.parse_hhmm(hhmm)  # validates format
+    out["week_card_time"] = hhmm
+    return out
+
 
 @admin_only
 async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -394,9 +439,13 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
     new = {k: db.get_setting(v) for k, v in KEY_MAP.items()}
+    week: dict[str, str] = {}
     try:
         for arg in context.args:
             key, _, val = arg.partition("=")
+            if key == "week" and val:
+                week.update(_parse_week_arg(val))
+                continue
             if key not in KEY_MAP or not val:
                 raise ValueError(f"unknown argument «{arg}»")
             if key == "final":
@@ -424,10 +473,12 @@ async def cmd_settimes(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
     for key, val in new.items():
         db.set_setting(KEY_MAP[key], val)
+    for key, val in week.items():
+        db.set_setting(key, val)
     await update.message.reply_text(
         f"Saved ✅ prompt {new['prompt']}, reminder {new['reminder']}, "
         f"final −{new['final']} min, deadline {new['deadline']}, "
-        f"preview {new['preview']}."
+        f"preview {new['preview']}, week card {_week_schedule_label()}."
     )
 
 
@@ -1502,6 +1553,123 @@ async def cmd_unkick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(
         f"Restored {row['first_name']} (id {row['tg_id']})."
     )
+
+
+def _who(tg_id: int) -> str:
+    u = db.get_user(tg_id)
+    if u is None:
+        return str(tg_id)
+    return f"{u['first_name']}" + (f" @{u['username']}" if u["username"] else "")
+
+
+def _week_end_arg(args: list[str]) -> str | None:
+    """Optional trailing YYYY-MM-DD; defaults to yesterday (the window the
+    scheduled job would be covering). None means the argument was malformed."""
+    if not args:
+        return jobs.week_end_for(jobs.now_local().date())
+    try:
+        return date_cls.fromisoformat(args[0]).isoformat()
+    except ValueError:
+        return None
+
+
+@admin_only
+async def cmd_weekcard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/weekcard — dry run; `send`/`me` actually offer the cards; `reset` clears
+    the record of a week so it can be offered again."""
+    usage = (
+        "Usage: /weekcard                     — who qualifies now (sends nothing)\n"
+        "       /weekcard send [YYYY-MM-DD]   — offer the cards\n"
+        "       /weekcard me [YYYY-MM-DD]     — offer only your own\n"
+        "       /weekcard reset [YYYY-MM-DD]  — forget that week, so it can run again"
+    )
+    args = list(context.args)
+    mode = "show"
+    if args and args[0].lower() in ("send", "me", "reset"):
+        mode = args.pop(0).lower()
+    week_end = _week_end_arg(args)
+    if week_end is None:
+        await update.message.reply_text(usage)
+        return
+
+    dates = db.week_days(week_end, config.WEEK_SPAN_DAYS)
+    if mode == "reset":
+        n = db.delete_week_cards(week_end)
+        if db.get_setting("week_card_last") == week_end:
+            db.set_setting("week_card_last", "")
+        await update.message.reply_text(
+            f"Cleared {n} record(s) for the week ending {week_end}."
+        )
+        return
+
+    if mode == "show":
+        if not dates:
+            await update.message.reply_text(f"No collage days in the week ending {week_end}.")
+            return
+        _, board, leader = jobs.week_cast(week_end)
+        lines = [
+            f"🗓 Week ending {week_end} — {len(dates)} collage day(s): "
+            f"{dates[0]} … {dates[-1]}",
+        ]
+        if len(dates) < config.WEEK_MIN_DAYS:
+            lines.append(
+                f"Too few days ({len(dates)} < {config.WEEK_MIN_DAYS}) — the job would skip this week."
+            )
+        if not board:
+            lines.append(f"Nobody reached {config.WEEK_MIN_PHOTOS} days — no cards.")
+        for r in board:
+            card = db.get_week_card(week_end, r["tg_id"])
+            crown = "👑 " if leader and r["tg_id"] == leader["tg_id"] else "• "
+            mark = f" — {card['status']}" if card else ""
+            lines.append(
+                f"{crown}{_who(r['tg_id'])} — {r['days']}/{len(dates)}, "
+                f"streak {r['streak']}🔥{mark}"
+            )
+        if leader:
+            tied = jobs.tied_leaders(board)
+            if len(tied) > 1:
+                last = db.last_crowned(week_end)
+                who = ", ".join(
+                    f"{_who(r['tg_id'])} (last 👑 {last.get(r['tg_id'], 'never')})"
+                    for r in tied
+                )
+                lines.append(f"\n{len(tied)} tied on {leader['streak']}🔥: {who}")
+                lines.append("👑 rotates to whoever was crowned least recently.")
+            lines.append("👑 is the only one asked to share; the rest just get theirs.")
+        lines.append("\n/weekcard send — send these now")
+        await update.message.reply_text("\n".join(lines))
+        return
+
+    only = update.effective_user.id if mode == "me" else None
+    result = await jobs.offer_week_cards(context, week_end, only=only)
+    await update.message.reply_text(result)
+
+
+@admin_only
+async def cmd_weekcards(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """What each author decided about their own card that week."""
+    week_end = _week_end_arg(list(context.args))
+    if week_end is None:
+        await update.message.reply_text("Usage: /weekcards [YYYY-MM-DD]")
+        return
+    rows = db.week_cards_for(week_end)
+    if not rows:
+        await update.message.reply_text(f"No week cards for the week ending {week_end}.")
+        return
+    mark = {
+        "offered": "👑 asked to share, hasn't decided",
+        "shared": "👑 🖼 shared it",
+        "kept": "👑 🤫 kept it",
+        "gift": "🎁 card sent, nothing to decide",
+    }
+    total = len(db.week_days(week_end, config.WEEK_SPAN_DAYS)) or "?"
+    lines = [f"🗓 Week ending {week_end}:"]
+    for r in rows:
+        lines.append(
+            f"• {_who(r['tg_id'])} — {r['days']}/{total}, streak {r['streak']}🔥 "
+            f"— {mark.get(r['status'], r['status'])}"
+        )
+    await update.message.reply_text("\n".join(lines))
 
 
 @admin_only

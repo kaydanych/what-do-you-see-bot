@@ -40,6 +40,14 @@ DEFAULT_SETTINGS = {
     "proof_batch": "3",          # how many people are asked per round
     "proof_round_min": "10",     # silence for this long -> ask the next batch
     "proof_ban_quorum": "2",     # this many bans park the day on the admin
+    # The weekly card. Runs on week_card_dow (0=Mon … 6=Sun) at week_card_time,
+    # covering the seven days ending the day *before* — so the default, Sunday
+    # 17:00, reads the week Sun–Sat and ignores that morning's submissions,
+    # which are still open. week_card_last is the last window handled.
+    "week_card_enabled": "1",
+    "week_card_dow": "6",
+    "week_card_time": "17:00",
+    "week_card_last": "",
 }
 
 MAX_PHOTO_SIDE = 2560      # stored photos are downscaled to this
@@ -79,6 +87,20 @@ COLLAGE_HIRES_SCALE = 3.0      # 3x stays plenty zoomable but ~40% fewer pixels
                                # than 4x, so the NAS renders it much faster
 COLLAGE_HIRES_MAX_SIDE = 8000  # cap the long side of the hi-res file
 COLLAGE_HIRES_QUALITY = 90     # JPEG quality for the hi-res file
+
+# The weekly card (one person's own week, offered to them, shared only if they
+# say yes). Same mat as the collage, plus a warm accent that belongs to nothing
+# else in the bot, so the card reads as its own object.
+WEEK_ACCENT = "#d9b26a"        # day chips: text + outline, days that were filled
+WEEK_CHIP_BG = "#1f1c16"       # day chips: fill
+WEEK_CHIP_OFF = "#3a3a3a"      # day chips: a day with no photo, left unlit
+WEEK_SPAN_DAYS = 7             # calendar days in the window
+WEEK_MIN_DAYS = 4              # fewer collage days than this in the window and
+                               # the week is skipped — a week that barely ran
+                               # isn't a week worth handing anybody back
+WEEK_MIN_PHOTOS = 5            # a card needs at least this many days on it: below
+                               # five it stops reading as a week and starts
+                               # reading as a reminder of what you missed
 
 
 def validate() -> None:

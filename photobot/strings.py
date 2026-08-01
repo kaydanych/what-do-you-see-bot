@@ -115,6 +115,35 @@ STRINGS = {
             "📅 {date} — задание было:\n{prompt}\n\n"
             "{name} рассказывает, почему выбрал(а) это фото:\n«{text}»"
         ),
+        # --- the weekly card (Sunday) ---
+        # Two messages: the streak leader gets congratulated and asked whether to
+        # show the group; everyone else with a full-enough week just gets their
+        # card, with nothing to decide.
+        "WEEK_CARD": (
+            "🔥 {n} дней подряд — это лучшая серия в игре прямо сейчас!\n\n"
+            "Ты держишь её дольше всех: {k} из {of} дней на этой неделе, и серия "
+            "тянется дальше. Снимаю шляпу 🎩\n\n"
+            "Вот твоя неделя одним кадром — она твоя, можешь просто оставить "
+            "себе. А можно показать её всем: люди видят коллажи, но почти "
+            "никогда — неделю одного человека подряд. Покажем?"
+        ),
+        "WEEK_GIFT": (
+            "🗓 Твоя неделя — {k} из {of} дней.\n\n"
+            "Держи её одним кадром, на память. Это только тебе — никто больше "
+            "этого не видит."
+        ),
+        "WEEK_GIFT_STREAK": "\n\nИ ты идёшь {n} дней подряд 🔥",
+        "WEEK_BTN_SHARE": "🖼 Показать всем",
+        "WEEK_BTN_KEEP": "🤫 Оставить себе",
+        "WEEK_CARD_SHARED": "Показал твою неделю всем 🖼 Спасибо!",
+        "WEEK_CARD_KEPT": "Ок, она остаётся только у тебя 🤫",
+        "WEEK_CARD_GONE": "Эта неделя уже закрыта 🙂",
+        "WEEK_CARD_PUBLIC": (
+            "🔥 Серия недели — {name}\n\n"
+            "{n} дней подряд, дольше всех в игре сейчас. Вот эта неделя целиком, "
+            "глазами одного человека.\n\n"
+            "Показываю с разрешения автора."
+        ),
         # --- collage proofing (trusted users check the collage pre-publish) ---
         "PROOF_ASK": (
             "👀 ПРОВЕРКА КОЛЛАЖА — РЕШАЕШЬ ТЫ\n\n"
@@ -293,6 +322,35 @@ STRINGS = {
             "💬 Story of the day\n\n"
             "📅 {date} — the challenge was:\n{prompt}\n\n"
             "{name} on why they chose this photo:\n«{text}»"
+        ),
+        # --- the weekly card (Sunday) ---
+        # Two messages: the streak leader gets congratulated and asked whether to
+        # show the group; everyone else with a full-enough week just gets their
+        # card, with nothing to decide.
+        "WEEK_CARD": (
+            "🔥 {n} days in a row — the longest streak in the game right now!\n\n"
+            "Nobody is holding one longer: {k} of {of} days this week, and the "
+            "run keeps going. Hat off to you 🎩\n\n"
+            "Here's your week in one picture — it's yours, you can simply keep "
+            "it. Or you can show it to everyone: people see the daily collages, "
+            "but almost never one person's week in a row. Shall we?"
+        ),
+        "WEEK_GIFT": (
+            "🗓 Your week — {k} of {of} days.\n\n"
+            "Here it is in one picture, to keep. This one is just for you — "
+            "nobody else sees it."
+        ),
+        "WEEK_GIFT_STREAK": "\n\nAnd you're {n} days in a row 🔥",
+        "WEEK_BTN_SHARE": "🖼 Show everyone",
+        "WEEK_BTN_KEEP": "🤫 Keep it to myself",
+        "WEEK_CARD_SHARED": "Your week is out there 🖼 Thank you!",
+        "WEEK_CARD_KEPT": "OK — it stays with you 🤫",
+        "WEEK_CARD_GONE": "That week is already closed 🙂",
+        "WEEK_CARD_PUBLIC": (
+            "🔥 Streak of the week — {name}\n\n"
+            "{n} days in a row, the longest run in the game right now. Here is "
+            "that whole week, through one pair of eyes.\n\n"
+            "Shared with the author's blessing."
         ),
         # --- collage proofing (trusted users check the collage pre-publish) ---
         "PROOF_ASK": (

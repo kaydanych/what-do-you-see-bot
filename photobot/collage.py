@@ -331,6 +331,135 @@ def build_collage(
     return out_path
 
 
+_WEEK_TITLE = {"ru": "{name} — эта неделя", "en": "{name}'s week"}
+# A week with no gap in it earns the stronger headline.
+_WEEK_TITLE_FULL = {"ru": "{name} — неделя целиком", "en": "{name}'s week, all of it"}
+_WEEK_DAYS = {
+    "ru": ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"],
+    "en": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"],
+}
+_WEEK_FOOT = {"ru": "{k} из {n} дней", "en": "{k} of {n} days"}
+_WEEK_FOOT_FULL = {"ru": "{n} из {n} · ни одного пропуска", "en": "{n} of {n} · not a day missed"}
+_WEEK_STREAK = {"ru": "{n} дней подряд", "en": "{n} days in a row"}
+
+
+def _fmt_week_range(dates: list[str], lang: str) -> str:
+    """'26 июля – 1 августа' / '26 July – 1 August', year dropped: the card is
+    about a week that just happened, nobody needs telling which year it is."""
+    a = date_cls.fromisoformat(dates[0])
+    b = date_cls.fromisoformat(dates[-1])
+    months = _RU_MONTHS if lang == "ru" else _EN_MONTHS
+    if a.month == b.month:
+        return f"{a.day}–{b.day} {months[b.month - 1]}"
+    return f"{a.day} {months[a.month - 1]} – {b.day} {months[b.month - 1]}"
+
+
+def build_week_card(
+    photo_by_date: dict[str, Path],
+    out_path: Path,
+    *,
+    name: str,
+    dates: list[str],
+    lang: str = "en",
+    streak: int = 0,
+    quality: int = 90,
+) -> Path:
+    """One person's week: their own photos, in the order they were taken, in the
+    collage's visual language (same mat, tiles, radius and typography).
+
+    Unlike the daily collage this is *not* shuffled — chronology is the whole
+    point, and the row of day chips above the mosaic reads as a week getting
+    filled in: a chip lights up for a day you sent something, stays dark for a
+    day you didn't. `dates` is the whole window, `photo_by_date` only the days
+    that happened, so a 5-of-7 week is drawn as exactly that."""
+    filled = [d for d in dates if d in photo_by_date and Path(photo_by_date[d]).exists()]
+    if not filled:
+        raise ValueError("no photos to build a week card from")
+    paths = [Path(photo_by_date[d]) for d in filled]
+    images = [_load_rgb(p) for p in paths]
+
+    pad, gap, radius = config.COLLAGE_PAD, config.COLLAGE_GAP, config.COLLAGE_RADIUS
+    W = config.COLLAGE_WIDTH
+    content_w = W - 2 * pad
+    rows = _justify(images, content_w, _base_row_h(len(images)), gap)
+
+    f_kick = _font(False, 28)
+    f_title = _font(True, 42)
+    f_chip = _font(True, 24)
+    f_foot = _font(False, 26)
+
+    def line_h(font) -> int:
+        asc, desc = font.getmetrics()
+        return asc + desc
+
+    full = len(filled) == len(dates)
+    kicker = _fmt_week_range(dates, lang)
+    titles = _WEEK_TITLE_FULL if full else _WEEK_TITLE
+    title = titles.get(lang, titles["en"]).format(name=name)
+    names = _WEEK_DAYS.get(lang, _WEEK_DAYS["en"])
+    chips = [(names[date_cls.fromisoformat(d).weekday()], d in filled) for d in dates]
+
+    chip_h = 44
+    head_h = (
+        int(line_h(f_kick) * 1.3) + int(line_h(f_title) * 1.35) + chip_h + 26 + 26
+    )
+    body_h = sum(row[0][2] for row in rows) + gap * (len(rows) - 1)
+    foot_h = int(line_h(f_foot) * 1.3) + 10
+    total_h = pad + head_h + body_h + foot_h + pad
+
+    canvas = Image.new("RGB", (W, total_h), config.COLLAGE_BG)
+    draw = ImageDraw.Draw(canvas)
+
+    y = pad
+    draw.text((pad, y), kicker, font=f_kick, fill=config.COLLAGE_DIM)
+    y += int(line_h(f_kick) * 1.3)
+    draw.text((pad, y), title, font=f_title, fill=config.COLLAGE_FG)
+    y += int(line_h(f_title) * 1.35)
+
+    # One chip per day of the window, lit for the days that were filled — the
+    # claim the card is making, before you even look at the photographs.
+    x = pad
+    for label, lit in chips:
+        w = draw.textlength(label, font=f_chip) + 26
+        draw.rounded_rectangle(
+            [x, y, x + w, y + chip_h], radius=chip_h // 2,
+            fill=config.WEEK_CHIP_BG if lit else None,
+            outline=config.WEEK_ACCENT if lit else config.WEEK_CHIP_OFF,
+        )
+        draw.text(
+            (x + w / 2, y + chip_h / 2), label, font=f_chip,
+            fill=config.WEEK_ACCENT if lit else config.WEEK_CHIP_OFF, anchor="mm",
+        )
+        x += w + 10
+    y += chip_h + 26
+
+    for row in rows:
+        row_w = sum(w for _, w, _ in row) + gap * (len(row) - 1)
+        x = pad + (content_w - row_w) // 2
+        for im, w, h in row:
+            tile = _rounded(ImageOps.fit(im, (w, h)), radius)
+            canvas.paste(tile, (x, y), tile)
+            x += w + gap
+        y += row[0][2] + gap
+
+    feet = _WEEK_FOOT_FULL if full else _WEEK_FOOT
+    foot = feet.get(lang, feet["en"]).format(k=len(filled), n=len(dates))
+    if streak > len(filled):  # only worth saying when it reaches past this week
+        foot += " · " + _WEEK_STREAK.get(lang, _WEEK_STREAK["en"]).format(n=streak)
+    draw.text(
+        (pad, total_h - pad - line_h(f_foot)),
+        f"{foot} · @what_do_you_see_bot",
+        font=f_foot,
+        fill=config.COLLAGE_DIM,
+    )
+
+    if max(canvas.size) > config.COLLAGE_MAX_SIDE:
+        canvas.thumbnail((config.COLLAGE_MAX_SIDE, config.COLLAGE_MAX_SIDE))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out_path, "JPEG", quality=quality)
+    return out_path
+
+
 def build_contact_sheet(photo_paths: list[Path], out_path: Path) -> Path:
     """Moderation view: every submission exactly once, in the given order,
     with a big number on each cell matching /exclude N. No duplicates,

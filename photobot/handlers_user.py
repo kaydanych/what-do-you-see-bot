@@ -425,6 +425,34 @@ async def on_story_like(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             log.debug("story heart update failed for %s/%s", row["tg_id"], sid)
 
 
+async def on_week_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """The author's answer to their own week card: show it to everyone, or keep
+    it. Either way the buttons come off, so the choice is made once and the card
+    stays in their chat as a keepsake."""
+    query = update.callback_query
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    try:
+        _, action, week_end = query.data.split(":", 2)
+    except ValueError:
+        await _answer(query)
+        return
+    # set_week_card_status only moves a row that is still 'offered', so a double
+    # tap (or a tap on someone else's card) can't send the week out twice.
+    if not db.set_week_card_status(week_end, u.id, "shared" if action == "s" else "kept"):
+        await _answer(query, t(lang, "WEEK_CARD_GONE"))
+        return
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        log.debug("week card keyboard removal failed for %s/%s", u.id, week_end)
+    if action == "s":
+        await _answer(query, t(lang, "WEEK_CARD_SHARED"))
+        await jobs.share_week_card(context, week_end, u.id)
+    else:
+        await _answer(query, t(lang, "WEEK_CARD_KEPT"))
+
+
 async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Up/down feedback-poll tap: store the vote, refresh tallies on every copy."""
     query = update.callback_query

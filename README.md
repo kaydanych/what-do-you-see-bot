@@ -72,6 +72,10 @@ approved idea ships with the suggester's name baked in.
   across every copy
 - 🔥 **Streaks** — your run of consecutive days comes back the moment you
   submit, as a private well-done
+- 🗓 **The week card** — Sunday afternoon your own week comes back as one
+  picture, chronological, yours to keep. The longest streak in the game gets
+  congratulated and asked whether the group should see theirs; a tie rotates, so
+  nobody is crowned forever and nobody is named in public without saying yes
 - 🚪 **Knock, knock** — flip through the day's photos under the collage and
   knock on the one whose story you want; one knock each, tallies hidden
 - 💬 **Story of the day** — the bot can ask one author why they chose their
@@ -130,6 +134,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 | `/delcollage` | unsend a collage everywhere (Telegram allows 48 h) and reset the day |
 | `/settimes` · `/times` | move the day's clock |
 | `/stats` · `/users` · `/feedback_all` | who's playing, what they think |
+| `/weekcard` · `/weekcards` | Sunday's week cards — who qualifies, what they chose |
 | `/errors` · `/version` | last log lines, which build is running |
 
 Every crash is DM'd to the admins with a traceback, and a tick job every minute

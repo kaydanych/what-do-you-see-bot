@@ -1,6 +1,6 @@
 import sqlite3
 import threading
-from datetime import datetime
+from datetime import date as date_cls, datetime, timedelta
 from pathlib import Path
 
 from . import config
@@ -154,6 +154,21 @@ CREATE TABLE IF NOT EXISTS story_messages (
     tg_id      INTEGER NOT NULL,
     message_id INTEGER NOT NULL,
     PRIMARY KEY (story_id, tg_id)
+);
+-- The weekly card: one row per person who didn't miss a day that week. The card
+-- is theirs first — it only reaches the group if they tap "share", which is what
+-- `status` tracks. `file_id` is the card as Telegram stored it, so sharing costs
+-- no second upload.
+CREATE TABLE IF NOT EXISTS week_cards (
+    week_end   TEXT NOT NULL,        -- last day of the window (ISO)
+    tg_id      INTEGER NOT NULL,
+    days       INTEGER NOT NULL,     -- collage days in the window = photos on the card
+    streak     INTEGER NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'offered',  -- offered | shared | kept
+    file_id    TEXT,
+    offered_at TEXT,
+    decided_at TEXT,
+    PRIMARY KEY (week_end, tg_id)
 );
 """
 
@@ -989,3 +1004,125 @@ def streaks_for(date: str) -> dict[int, int]:
         if streak:
             out[tg_id] = streak
     return out
+
+
+# --- the weekly card ----------------------------------------------------------
+
+def week_days(end: str, span: int = 7) -> list[str]:
+    """Collage days inside the `span`-day calendar window ending at `end`.
+
+    Counted in collage days, not calendar days, so a skipped or empty day can't
+    make a week un-winnable — you can only be measured against days that ran."""
+    start = (date_cls.fromisoformat(end) - timedelta(days=span - 1)).isoformat()
+    return [d for d in collage_dates() if start <= d <= end]
+
+
+def week_board(end: str, span: int = 7) -> list[dict]:
+    """Everyone who submitted at all in the window ending at `end`: how many of
+    its collage days they filled, how long their run is as of that day, and how
+    many days they've played in total.
+
+    Ordered the way the week is read — longest streak first, then the fullest
+    week, then the longest history — so the first row is the streak leader and
+    the tie-break is deterministic rather than dictionary order."""
+    days = week_days(end, span)
+    if not days:
+        return []
+    history = [d for d in collage_dates() if d <= end]
+    out = []
+    for tg_id, user_dates in participation().items():
+        filled = [d for d in days if d in user_dates]
+        if not filled:
+            continue
+        streak = 0
+        for d in reversed(history):
+            if d not in user_dates:
+                break
+            streak += 1
+        out.append(
+            {
+                "tg_id": tg_id,
+                "dates": filled,
+                "days": len(filled),
+                "of": len(days),
+                "streak": streak,
+                "total": len([d for d in history if d in user_dates]),
+            }
+        )
+    out.sort(key=lambda r: (-r["streak"], -r["days"], -r["total"], r["tg_id"]))
+    return out
+
+
+def photos_on(tg_id: int, dates: list[str]) -> list[sqlite3.Row]:
+    """That user's non-excluded submissions for the given dates, in date order."""
+    if not dates:
+        return []
+    marks = ",".join("?" * len(dates))
+    return _exec(
+        f"SELECT * FROM photos WHERE tg_id=? AND excluded=0 AND date IN ({marks}) "
+        "ORDER BY date",
+        (tg_id, *dates),
+    ).fetchall()
+
+
+def add_week_card(
+    week_end: str, tg_id: int, days: int, streak: int, status: str = "offered"
+) -> None:
+    """'offered' = the streak leader, who still has a choice to make; 'gift' =
+    everyone else, whose card is theirs and goes no further."""
+    _exec(
+        "INSERT INTO week_cards(week_end, tg_id, days, streak, status, offered_at) "
+        "VALUES(?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(week_end, tg_id) DO NOTHING",
+        (week_end, tg_id, days, streak, status, _now()),
+    )
+
+
+def last_crowned(before: str) -> dict[int, str]:
+    """tg_id -> the last week they were the leader, for weeks before `before`.
+
+    Gift cards don't count — only the crown does. Feeds the tie-break: two
+    people on the same streak take turns instead of one of them being shut out
+    forever by a rule they can't see."""
+    rows = _exec(
+        "SELECT tg_id, MAX(week_end) AS last FROM week_cards "
+        "WHERE status<>'gift' AND week_end<? GROUP BY tg_id",
+        (before,),
+    ).fetchall()
+    return {r["tg_id"]: r["last"] for r in rows}
+
+
+def get_week_card(week_end: str, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM week_cards WHERE week_end=? AND tg_id=?", (week_end, tg_id)
+    ).fetchone()
+
+
+def week_cards_for(week_end: str) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM week_cards WHERE week_end=? ORDER BY streak DESC, days DESC",
+        (week_end,),
+    ).fetchall()
+
+
+def set_week_card_file_id(week_end: str, tg_id: int, file_id: str) -> None:
+    _exec(
+        "UPDATE week_cards SET file_id=? WHERE week_end=? AND tg_id=?",
+        (file_id, week_end, tg_id),
+    )
+
+
+def delete_week_cards(week_end: str) -> int:
+    """Forget a week so it can be offered again (admin escape hatch/testing)."""
+    return _exec("DELETE FROM week_cards WHERE week_end=?", (week_end,)).rowcount
+
+
+def set_week_card_status(week_end: str, tg_id: int, status: str) -> bool:
+    """Record the author's decision. Returns False if it was already decided —
+    the guard against a double tap sharing the card twice."""
+    cur = _exec(
+        "UPDATE week_cards SET status=?, decided_at=? "
+        "WHERE week_end=? AND tg_id=? AND status='offered'",
+        (status, _now(), week_end, tg_id),
+    )
+    return cur.rowcount > 0

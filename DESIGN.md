@@ -318,6 +318,9 @@ collage_messages (date, tg_id, message_id,                   -- per-user copy of
 proof_asks (date, tg_id, round_no, message_id, asked_at,     -- pre-publish check (§4a);
          value TEXT, note, voted_at,                         -- value: approve|ban,
          PRIMARY KEY (date, tg_id))                          -- NULL until they decide
+week_cards (week_end, tg_id, days, streak, status TEXT,      -- one perfect week
+         file_id, offered_at, decided_at,                    -- (§12b); status:
+         PRIMARY KEY (week_end, tg_id))                      -- offered|shared|kept
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```
@@ -386,6 +389,64 @@ is now `crc32`.
 - **/stats (admin-only for now)** — participation leaderboard derived from
   `photos` × collage days: N/total per user, current streak, plus overall
   rating tallies.
+
+## 12b. The week card — a streak leader, and a gift for everyone else
+
+Every Sunday afternoon the people who showed up get their own week back as one
+picture: their photos, in the order they were taken, on the collage's mat with
+the collage's type. For the author it's a keepsake of the thing they showed up
+for; for the group — if it's ever shown — it's the one view the daily collage
+can never give: a week seen through one pair of eyes.
+
+**One crown, many gifts.** The card goes to everyone with at least
+`WEEK_MIN_PHOTOS` (5) of the window's days, but only the **streak leader** is
+congratulated and asked whether the group should see theirs. Everyone else's
+card carries *no buttons at all* — it's a gift, not a nomination, so there is
+nothing to decide and nothing to feel second about. That split is what lets a
+single winner exist without turning the other thirteen cards into consolation
+prizes: they are not being ranked, they are being handed their own week.
+
+**Ties rotate.** Two people who never miss are level forever, so a fixed
+tie-break would crown one of them every single week and never once name the
+other. Among everyone on the longest streak the crown therefore goes to whoever
+was crowned **least recently** (never > longest ago), then the fuller week, the
+longer history, and finally the id — always exactly one person, and over time
+each of them gets their turn. Gift cards don't count as a crown.
+
+**Days, not dates.** The window counts *collage days* inside the last seven
+calendar days, so a skipped or empty day can't cost anyone their week; a week
+with fewer than `WEEK_MIN_DAYS` (4) collage days is skipped entirely, because a
+week that barely ran isn't a week worth handing anybody back. A card drawn from
+a partial week says so: chips light up for the days that were filled and stay
+dark for the ones that weren't, and the title drops from "the whole week" to
+plainly "their week".
+
+**The author decides.** The leader's card is sent to them alone, with «show
+everyone» / «keep it». Only a tap on the first sends it to the rest of the game,
+captioned with their streak and *"shared with the author's blessing"*. So the
+public part of this is public consent, not a public congratulation nobody asked
+for — the same instinct as §11a, where revealing the author is the author's to
+give. `week_cards.status` (offered → shared | kept, or `gift` for everyone else)
+is the record; the update is guarded on `status='offered'`, so a double tap
+can't publish a week twice and a forged callback on a gift card decides nothing.
+The shared copy is sent by `file_id`, so it costs no second upload.
+
+**Timing.** `week_card_dow` @ `week_card_time` (default Sun 17:00), from the
+same one-minute tick as everything else, and the window ends **the day before**
+the run — so Sunday reads the week Sun–Sat and that morning's still-open
+submissions are none of its business. It also keeps the card from naming the
+author of a photo whose knock window (§11a) is still running: Saturday's knocks
+close at Sunday noon, five hours before the card goes out. The job compares
+against the last scheduled moment rather than "is it Sunday now?", so a weekend
+reboot makes it run late instead of never; on first deploy it arms itself rather
+than retro-celebrating a week that ended before the feature existed.
+
+**Admin.** `/weekcard` (who qualifies, sends nothing), `/weekcard send [date]`,
+`/weekcard me [date]` (only your own — the safe way to look at one), `/weekcard
+reset [date]`, `/weekcards [date]` (what each author decided).
+`scripts/weekcard_lab.py` rehearses the whole thing against a copy of the real
+data: `render` writes every qualifying card to disk, `live` runs the real
+handlers on the test bot with both fan-outs narrowed to one chat.
 
 ## 13. Edge cases covered
 
