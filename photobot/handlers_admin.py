@@ -112,6 +112,7 @@ decided, the question is deleted from anyone who hadn't answered.
 # How each user status reads in a list. '⏳' is a newcomer still waiting for a
 # ✅ — they are registered but outside everything the bot sends.
 STATUS_MARK = {"active": "🟢", "pending": "⏳", "inactive": "⚪️", "kicked": "🚫"}
+LANG_MARK = {"ru": "🇷🇺", "en": "🇬🇧"}
 
 
 def parse_prompt_line(line: str) -> tuple[str, str | None]:
@@ -227,9 +228,12 @@ async def cmd_users(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lines = []
     for r in rows:
         mark = STATUS_MARK.get(r["status"], "•")
+        flag = LANG_MARK.get(r["lang"], "❔")
         uname = f"@{r['username']}" if r["username"] else ""
         joined = (r["joined_at"] or "")[:10]
-        lines.append(f"{mark} {r['first_name']} {uname} (id {r['tg_id']}, {joined})")
+        lines.append(
+            f"{mark} {flag} {r['first_name']} {uname} (id {r['tg_id']}, {joined})"
+        )
     await update.message.reply_text("\n".join(lines[:100]))
 
 
