@@ -1636,6 +1636,15 @@ async def cmd_weekcard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 lines.append(f"\n{len(tied)} tied on {leader['streak']}🔥: {who}")
                 lines.append("👑 rotates to whoever was crowned least recently.")
             lines.append("👑 is the only one asked to share; the rest just get theirs.")
+        # The bookmark is what misfired once; show it, so "will it run?" is a
+        # question you can answer by looking rather than by waiting.
+        book = db.get_setting("week_card_last")
+        due = jobs.week_end_for(jobs.last_week_run(jobs.now_local()))
+        lines.append(
+            f"\nSchedule: {_week_schedule_label()}"
+            f"\nBookmark: {book or '—'} · last scheduled window {due} "
+            f"({'already handled' if book >= due else 'DUE, runs on the next tick'})"
+        )
         lines.append("\n/weekcard send — send these now")
         await update.message.reply_text("\n".join(lines))
         return
