@@ -1000,16 +1000,25 @@ async def maybe_offer_week_cards(
     context: ContextTypes.DEFAULT_TYPE, now: datetime
 ) -> None:
     """Fire the weekly offers once per week, from the same one-minute tick as
-    everything else — so the time is DB-editable and a late start still runs."""
+    everything else — so the time is DB-editable and a late start still runs.
+
+    `week_card_last` is this job's bookmark and *only* this job writes it: a
+    manual /weekcard for some other window used to move it, and since the test
+    was `!=` a bookmark that had jumped ahead read as "not done yet" and fired
+    the scheduled run on the spot, for a week that was already history. Hence
+    `>=` — a bookmark at or past this window means there is nothing owed."""
     if db.get_setting("week_card_enabled") != "1":
         return
     week_end = week_end_for(last_week_run(now))
-    if db.get_setting("week_card_last") == week_end:
+    last = db.get_setting("week_card_last")
+    if last >= week_end:
         return
-    if not db.get_setting("week_card_last"):
+    # Bookmark first: a crash halfway through must not leave the next tick, a
+    # minute later, starting the whole fan-out again. /weekcard send finishes it.
+    db.set_setting("week_card_last", week_end)
+    if not last:
         # First run ever: arm the job rather than retro-celebrating a week that
         # ended before the feature existed.
-        db.set_setting("week_card_last", week_end)
         return
     await offer_week_cards(context, week_end)
 
@@ -1084,7 +1093,11 @@ def week_cast(week_end: str) -> tuple[list[str], list[dict], dict | None]:
 
 
 async def offer_week_cards(
-    context: ContextTypes.DEFAULT_TYPE, week_end: str, *, only: int | None = None
+    context: ContextTypes.DEFAULT_TYPE,
+    week_end: str,
+    *,
+    only: int | None = None,
+    announce: bool = True,
 ) -> str:
     """Hand everyone their own week back, and ask the streak leader — and only
     them — whether the group should see theirs.
@@ -1157,14 +1170,16 @@ async def offer_week_cards(
             log.exception("week card %s to %s failed", week_end, uid)
             skipped += 1
 
-    db.set_setting("week_card_last", week_end)
     note = (
         f"🗓 Week ending {week_end} ({len(dates)} collage days): {won}"
         f"{sent} card(s) sent"
         + (f" — {', '.join(names)}" if names else "")
         + (f", {skipped} skipped" if skipped else "")
     )
-    await notify_admins(context, note)
+    # The scheduled run has to announce itself; a hand-typed /weekcard is
+    # already looking at the answer in the reply, so it doesn't say it twice.
+    if announce:
+        await notify_admins(context, note)
     return note
 
 

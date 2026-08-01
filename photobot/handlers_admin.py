@@ -1641,7 +1641,9 @@ async def cmd_weekcard(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     only = update.effective_user.id if mode == "me" else None
-    result = await jobs.offer_week_cards(context, week_end, only=only)
+    result = await jobs.offer_week_cards(
+        context, week_end, only=only, announce=False
+    )
     await update.message.reply_text(result)
 
 

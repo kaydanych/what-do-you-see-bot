@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime
 
 import pytest
@@ -154,6 +155,45 @@ def test_card_renders_full_and_partial_weeks(tmp_path, filled):
     with Image.open(out) as im:
         assert im.width == config.COLLAGE_WIDTH
         assert im.height > config.COLLAGE_WIDTH / 2
+
+
+def test_a_manual_run_cannot_trip_the_schedule(tmp_path):
+    """The bug this guards: /weekcard me for a *different* window moved the
+    scheduler's bookmark, the `!=` test read that as "this week isn't done", and
+    the tick fired a whole fan-out on the spot for a week already in the past."""
+    seed_week()
+    submit(1, DAYS[:7], tmp_path)
+    db.set_setting("week_card_dow", "6")
+    db.set_setting("week_card_time", "17:00")
+    fired = []
+
+    async def boom(context, week_end, **kw):
+        fired.append(week_end)
+        return "should not happen"
+
+    saturday = datetime.fromisoformat("2026-08-01T12:30")
+    sunday = datetime.fromisoformat("2026-08-02T17:00")
+    tick = lambda when: asyncio.run(jobs.maybe_offer_week_cards(None, when))  # noqa: E731
+    monkey = jobs.offer_week_cards
+    try:
+        jobs.offer_week_cards = boom
+        # a fresh install arms itself and sends nothing
+        db.set_setting("week_card_last", "")
+        tick(saturday)
+        assert fired == [] and db.get_setting("week_card_last") == "2026-07-25"
+
+        # now the admin runs /weekcard me for a newer window by hand
+        db.set_setting("week_card_last", "2026-07-31")
+        tick(saturday)
+        assert fired == []  # ...and the tick a minute later stays quiet
+
+        # the real Sunday still fires, once
+        tick(sunday)
+        assert fired == ["2026-08-01"]
+        tick(sunday)
+        assert fired == ["2026-08-01"]
+    finally:
+        jobs.offer_week_cards = monkey
 
 
 def test_weekly_run_is_late_rather_than_never():
