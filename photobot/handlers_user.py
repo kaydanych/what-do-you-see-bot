@@ -8,7 +8,7 @@ from telegram import (
     InputMediaPhoto,
     Update,
 )
-from telegram.error import NetworkError, TimedOut
+from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
 from . import collage, config, db, jobs
@@ -306,14 +306,24 @@ async def _show_knock_card(context, chat: int, date: str, idx: int, message_id=N
     keyboard = jobs.knock_card_keyboard(date, idx, total)
     handle = photo["file_id"]
     media = handle or open(photo["file_path"], "rb")
+    msg = None
     try:
         if message_id is not None:
-            msg = await context.bot.edit_message_media(
-                chat_id=chat,
-                message_id=message_id,
-                media=InputMediaPhoto(media, caption=caption),
-                reply_markup=keyboard,
-            )
+            try:
+                msg = await context.bot.edit_message_media(
+                    chat_id=chat,
+                    message_id=message_id,
+                    media=InputMediaPhoto(media, caption=caption),
+                    reply_markup=keyboard,
+                )
+            except BadRequest as exc:
+                # Two quick taps can carry the same target index before the
+                # first edit redraws the buttons. Telegram applies one, then
+                # rejects the identical second edit; the requested state has
+                # already been reached, so this response is harmless.
+                if "message is not modified" not in str(exc).lower():
+                    raise
+                log.debug("knock card already showing for %s/%s/%s", chat, date, idx)
         else:
             msg = await context.bot.send_photo(
                 chat, media, caption=caption, reply_markup=keyboard

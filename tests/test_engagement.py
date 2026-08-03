@@ -1,6 +1,10 @@
-import pytest
+import asyncio
+from types import SimpleNamespace
 
-from photobot import db, handlers_admin as adm, jobs
+import pytest
+from telegram.error import BadRequest
+
+from photobot import db, handlers_admin as adm, handlers_user as usr, jobs
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +71,35 @@ def test_story_messages_remembered_per_user():
     db.add_story_message(sid, 1, 101)  # a republish replaces the old copy
     rows = {r["tg_id"]: r["message_id"] for r in db.story_messages_for(sid)}
     assert rows == {1: 101, 2: 200}
+
+
+def test_repeated_knock_carousel_tap_is_harmless():
+    date = "2026-07-16"
+    db.upsert_user(1, "Ann", None)
+    db.upsert_photo(date, 1, "/unused.jpg", file_id="telegram-file")
+    db.set_collage_cells(date, [1])
+
+    class Bot:
+        async def edit_message_media(self, **kwargs):
+            raise BadRequest("Message is not modified: identical media and markup")
+
+    context = SimpleNamespace(bot=Bot())
+    asyncio.run(usr._show_knock_card(context, 1, date, 0, message_id=100))
+
+
+def test_knock_carousel_keeps_other_bad_requests_visible():
+    date = "2026-07-16"
+    db.upsert_user(1, "Ann", None)
+    db.upsert_photo(date, 1, "/unused.jpg", file_id="telegram-file")
+    db.set_collage_cells(date, [1])
+
+    class Bot:
+        async def edit_message_media(self, **kwargs):
+            raise BadRequest("Message to edit not found")
+
+    context = SimpleNamespace(bot=Bot())
+    with pytest.raises(BadRequest, match="Message to edit not found"):
+        asyncio.run(usr._show_knock_card(context, 1, date, 0, message_id=100))
 
 
 def test_collage_messages_remembered_per_user():
