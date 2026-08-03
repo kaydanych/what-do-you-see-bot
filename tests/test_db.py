@@ -145,6 +145,7 @@ def test_story_lifecycle():
     assert db.story_by_ask_message(42, 555)["id"] == sid
     assert db.story_by_ask_message(42, 999) is None  # wrong message
     assert db.answered_stories() == []  # not answered yet
+    assert [r["id"] for r in db.open_stories()] == [sid]
 
     db.set_story_answer(sid, "  it reminded me of home  ")
     s = db.get_story(sid)
@@ -157,6 +158,7 @@ def test_story_lifecycle():
     assert db.set_story_status(sid, "published") is True
     assert db.get_story(sid)["published_at"] is not None
     assert db.answered_stories() == []
+    assert db.open_stories() == []
     assert db.set_story_status(9999, "dismissed") is False  # missing id
 
 

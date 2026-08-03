@@ -983,6 +983,13 @@ def answered_stories() -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def open_stories() -> list[sqlite3.Row]:
+    """Story requests still in progress: awaiting a reply or ready to publish."""
+    return _exec(
+        "SELECT * FROM stories WHERE status IN ('asked', 'answered') ORDER BY id"
+    ).fetchall()
+
+
 # --- participation stats ------------------------------------------------------
 
 def collage_dates() -> list[str]:

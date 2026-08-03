@@ -102,7 +102,7 @@ decided, the question is deleted from anyone who hadn't answered.
 /knocks [YYYY-MM-DD] — who the group knocked on; ranked, then the leader as a picture with their name — ‹ › through the tied ones and 💬 asks that author right there
 /askstory [YYYY-MM-DD] N — DM author N their photo and ask why they chose it
 /askstory random — pick a random past photo and ask its author
-/stories — stories the authors have answered, waiting to publish
+/stories — story requests: who is still replying and what is ready to publish
 /editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
 /publishstory <id> — send that photo + story to everyone in the game (reveals the author's name); it carries a ❤️ button with a live shared tally
 /publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
@@ -1027,10 +1027,10 @@ async def cmd_askstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 @admin_only
 async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    rows = db.answered_stories()
+    rows = db.open_stories()
     if not rows:
         await update.effective_message.reply_text(
-            "No stories waiting to publish.\n"
+            "No story requests in progress.\n"
             "Ask for one with /askstory [date] N (numbers from /photos)."
         )
         return
@@ -1038,6 +1038,14 @@ async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     for s in rows:
         u = db.get_user(s["tg_id"])
         name = u["first_name"] if u else str(s["tg_id"])
+        if s["status"] == "asked":
+            blocks.append(
+                f"⏳ #{s['id']} — {name}, photo from {s['date']}\n"
+                "Asked; waiting for their reply.\n"
+                f"/editstory {s['id']} <EN> | <RU> — write it yourself · "
+                f"/dismissstory {s['id']} — discard"
+            )
+            continue
         blocks.append(
             f"💬 #{s['id']} — {name}, photo from {s['date']}:\n«{s['text']}»"
             + (f"\n🇷🇺 «{s['text_ru']}»" if s["text_ru"] else "")
