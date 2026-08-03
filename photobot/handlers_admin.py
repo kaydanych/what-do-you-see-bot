@@ -989,8 +989,7 @@ async def cmd_stories(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
     blocks = []
     for s in rows:
-        u = db.get_user(s["tg_id"])
-        name = u["first_name"] if u else str(s["tg_id"])
+        name = _who(s["tg_id"])
         if s["status"] == "asked":
             blocks.append(
                 f"⏳ #{s['id']} — {name}, photo from {s['date']}\n"

@@ -13,8 +13,8 @@ def fresh_db(tmp_path):
 
 
 def test_stories_lists_waiting_and_answered_requests_only():
-    db.upsert_user(41, "Waiting Wendy", None)
-    db.upsert_user(42, "Ready Rita", None)
+    db.upsert_user(41, "Waiting Wendy", "waiting_wendy")
+    db.upsert_user(42, "Ready Rita", "ready_rita")
     db.upsert_user(43, "Published Pat", None)
     db.upsert_user(44, "Dismissed Dan", None)
 
@@ -38,9 +38,12 @@ def test_stories_lists_waiting_and_answered_requests_only():
     asyncio.run(adm.cmd_stories.__wrapped__(update, SimpleNamespace()))
 
     assert len(replies) == 1
-    assert f"⏳ #{waiting} — Waiting Wendy, photo from 2026-08-01" in replies[0]
+    assert (
+        f"⏳ #{waiting} — Waiting Wendy @waiting_wendy, photo from 2026-08-01"
+        in replies[0]
+    )
     assert "Asked; waiting for their reply." in replies[0]
-    assert f"💬 #{ready} — Ready Rita, photo from 2026-08-02" in replies[0]
+    assert f"💬 #{ready} — Ready Rita @ready_rita, photo from 2026-08-02" in replies[0]
     assert "A ready story" in replies[0]
     assert "Published Pat" not in replies[0]
     assert "Dismissed Dan" not in replies[0]
