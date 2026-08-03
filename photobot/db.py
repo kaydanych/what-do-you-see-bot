@@ -170,6 +170,24 @@ CREATE TABLE IF NOT EXISTS week_cards (
     decided_at TEXT,
     PRIMARY KEY (week_end, tg_id)
 );
+-- One live ❤️ tally per shared week card. The card's owner is separate from
+-- the reader so every public copy contributes to the same counter.
+CREATE TABLE IF NOT EXISTS week_card_likes (
+    week_end  TEXT NOT NULL,
+    card_tg_id INTEGER NOT NULL,
+    tg_id     INTEGER NOT NULL,
+    liked_at  TEXT,
+    PRIMARY KEY (week_end, card_tg_id, tg_id)
+);
+-- Every copy of a shared card, including the author's original, so a heart can
+-- refresh the tally everywhere rather than only on the message that was tapped.
+CREATE TABLE IF NOT EXISTS week_card_messages (
+    week_end   TEXT NOT NULL,
+    card_tg_id INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (week_end, card_tg_id, tg_id)
+);
 """
 
 
@@ -1114,6 +1132,8 @@ def set_week_card_file_id(week_end: str, tg_id: int, file_id: str) -> None:
 
 def delete_week_cards(week_end: str) -> int:
     """Forget a week so it can be offered again (admin escape hatch/testing)."""
+    _exec("DELETE FROM week_card_likes WHERE week_end=?", (week_end,))
+    _exec("DELETE FROM week_card_messages WHERE week_end=?", (week_end,))
     return _exec("DELETE FROM week_cards WHERE week_end=?", (week_end,)).rowcount
 
 
@@ -1126,3 +1146,68 @@ def set_week_card_status(week_end: str, tg_id: int, status: str) -> bool:
         (status, _now(), week_end, tg_id),
     )
     return cur.rowcount > 0
+
+
+def toggle_week_card_like(week_end: str, card_tg_id: int, tg_id: int) -> bool:
+    """Toggle one reader's heart on one shared week card.
+
+    Returns the new state (True = liked). The caller checks that the card was
+    actually shared before exposing this path.
+    """
+    key = (week_end, card_tg_id, tg_id)
+    row = _exec(
+        "SELECT 1 FROM week_card_likes "
+        "WHERE week_end=? AND card_tg_id=? AND tg_id=?",
+        key,
+    ).fetchone()
+    if row:
+        _exec(
+            "DELETE FROM week_card_likes "
+            "WHERE week_end=? AND card_tg_id=? AND tg_id=?",
+            key,
+        )
+        return False
+    _exec(
+        "INSERT INTO week_card_likes(week_end, card_tg_id, tg_id, liked_at) "
+        "VALUES(?, ?, ?, ?)",
+        (*key, _now()),
+    )
+    return True
+
+
+def week_card_like_count(week_end: str, card_tg_id: int) -> int:
+    row = _exec(
+        "SELECT COUNT(*) AS n FROM week_card_likes "
+        "WHERE week_end=? AND card_tg_id=?",
+        (week_end, card_tg_id),
+    ).fetchone()
+    return row["n"]
+
+
+def week_card_likers(week_end: str, card_tg_id: int) -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM week_card_likes "
+        "WHERE week_end=? AND card_tg_id=? ORDER BY liked_at",
+        (week_end, card_tg_id),
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def add_week_card_message(
+    week_end: str, card_tg_id: int, tg_id: int, message_id: int
+) -> None:
+    _exec(
+        "INSERT INTO week_card_messages(week_end, card_tg_id, tg_id, message_id) "
+        "VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(week_end, card_tg_id, tg_id) "
+        "DO UPDATE SET message_id=excluded.message_id",
+        (week_end, card_tg_id, tg_id, message_id),
+    )
+
+
+def week_card_messages_for(week_end: str, card_tg_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM week_card_messages "
+        "WHERE week_end=? AND card_tg_id=?",
+        (week_end, card_tg_id),
+    ).fetchall()

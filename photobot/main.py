@@ -144,6 +144,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_knock, pattern=r"^kn:"))
     app.add_handler(CallbackQueryHandler(usr.on_story_like, pattern=r"^story:"))
     app.add_handler(CallbackQueryHandler(usr.on_week_card, pattern=r"^wk:"))
+    app.add_handler(CallbackQueryHandler(usr.on_week_card_like, pattern=r"^wkh:"))
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
     app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
 

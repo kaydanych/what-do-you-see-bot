@@ -112,6 +112,7 @@ decided, the question is deleted from anyone who hadn't answered.
 Everyone with 5+ of the week's days gets their week rendered and sent to them —
 buttonless, a gift, nothing to decide. The streak leader alone is congratulated
 and asked «show everyone» / «keep it», and only their tap sends it to the group.
+When they share, every copy gets a ❤️ button with one live shared tally.
 Ties on the longest streak rotate: the crown goes to whoever was crowned least
 recently. The window ends the day *before* it runs (Sun–Sat), so it ignores
 Sunday's open submissions and never names an author whose knocks are still live.
@@ -1676,9 +1677,14 @@ async def cmd_weekcards(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     total = len(db.week_days(week_end, config.WEEK_SPAN_DAYS)) or "?"
     lines = [f"🗓 Week ending {week_end}:"]
     for r in rows:
+        reactions = (
+            f" · ❤️ {db.week_card_like_count(week_end, r['tg_id'])}"
+            if r["status"] == "shared"
+            else ""
+        )
         lines.append(
             f"• {_who(r['tg_id'])} — {r['days']}/{total}, streak {r['streak']}🔥 "
-            f"— {mark.get(r['status'], r['status'])}"
+            f"— {mark.get(r['status'], r['status'])}{reactions}"
         )
     await update.message.reply_text("\n".join(lines))
 

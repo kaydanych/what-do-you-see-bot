@@ -97,7 +97,8 @@ approved idea ships with the suggester's name baked in.
 - 🗓 **The week card** — Sunday afternoon your own week comes back as one
   picture, chronological, yours to keep. The longest streak in the game gets
   congratulated and asked whether the group should see theirs; a tie rotates, so
-  nobody is crowned forever and nobody is named in public without saying yes
+  nobody is crowned forever and nobody is named in public without saying yes.
+  If they share it, a live ❤️ tally appears under every copy
 - 🚪 **Knock, knock** — flip through the day's photos under the collage and
   knock on the one whose story you want; one knock each, tallies hidden
 - 💬 **Story of the day** — the bot can ask one author why they chose their

@@ -979,6 +979,15 @@ def week_card_keyboard(week_end: str, lang: str | None) -> InlineKeyboardMarkup:
     )
 
 
+def week_card_heart_keyboard(week_end: str, tg_id: int) -> InlineKeyboardMarkup:
+    """One synchronized heart under every copy of a publicly shared week."""
+    n = db.week_card_like_count(week_end, tg_id)
+    label = f"{STORY_HEART} {n}" if n else STORY_HEART
+    return InlineKeyboardMarkup(
+        [[InlineKeyboardButton(label, callback_data=f"wkh:{week_end}:{tg_id}")]]
+    )
+
+
 def week_end_for(today: date_cls) -> str:
     return (today - timedelta(days=1)).isoformat()
 
@@ -1151,6 +1160,10 @@ async def offer_week_cards(
                     uid, f, caption=text, reply_markup=keyboard
                 )
             db.set_week_card_file_id(week_end, uid, msg.photo[-1].file_id)
+            if is_leader:
+                # If they share, this original copy changes from the decision
+                # buttons to the same live heart tally as every public copy.
+                db.add_week_card_message(week_end, uid, uid, msg.message_id)
             sent += 1
             u = db.get_user(uid)
             name = u["first_name"] if u else str(uid)
@@ -1204,12 +1217,23 @@ async def share_week_card(
         caption = t(db.get_user_lang(uid), "WEEK_CARD_PUBLIC", name=name, n=row["streak"])
         try:
             if file_id:
-                await context.bot.send_photo(uid, file_id, caption=caption)
+                msg = await context.bot.send_photo(
+                    uid,
+                    file_id,
+                    caption=caption,
+                    reply_markup=week_card_heart_keyboard(week_end, tg_id),
+                )
             else:  # card never made it to Telegram (or DB predates file_id)
                 with open(path, "rb") as f:
-                    msg = await context.bot.send_photo(uid, f, caption=caption)
+                    msg = await context.bot.send_photo(
+                        uid,
+                        f,
+                        caption=caption,
+                        reply_markup=week_card_heart_keyboard(week_end, tg_id),
+                    )
                 file_id = msg.photo[-1].file_id
                 db.set_week_card_file_id(week_end, tg_id, file_id)
+            db.add_week_card_message(week_end, tg_id, uid, msg.message_id)
             sent += 1
         except Forbidden:
             db.set_user_status(uid, "inactive")

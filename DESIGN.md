@@ -352,6 +352,10 @@ proof_asks (date, tg_id, round_no, message_id, asked_at,     -- pre-publish chec
 week_cards (week_end, tg_id, days, streak, status TEXT,      -- personal week card
          file_id, offered_at, decided_at,                    -- (§12b); status:
          PRIMARY KEY (week_end, tg_id))                      -- offered|shared|kept|gift
+week_card_likes (week_end, card_tg_id, tg_id, liked_at,      -- one ❤️ per reader
+         PRIMARY KEY (week_end, card_tg_id, tg_id))
+week_card_messages (week_end, card_tg_id, tg_id, message_id, -- copies for live tally
+         PRIMARY KEY (week_end, card_tg_id, tg_id))
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
 ```
@@ -460,7 +464,9 @@ for — the same instinct as §11a, where revealing the author is the author's t
 give. `week_cards.status` (offered → shared | kept, or `gift` for everyone else)
 is the record; the update is guarded on `status='offered'`, so a double tap
 can't publish a week twice and a forged callback on a gift card decides nothing.
-The shared copy is sent by `file_id`, so it costs no second upload.
+The shared copy is sent by `file_id`, so it costs no second upload. Once shared,
+the decision buttons on the author's original become a ❤️; every public copy
+carries the same button, and its live tally is synchronized across all of them.
 
 **Timing.** `week_card_dow` @ `week_card_time` (default Sun 17:00), from the
 same one-minute tick as everything else, and the window ends **the day before**

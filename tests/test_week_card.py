@@ -1,10 +1,11 @@
 import asyncio
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
-from photobot import collage, config, db, jobs
+from photobot import collage, config, db, handlers_user as usr, jobs
 
 DAYS = [f"2026-07-{d:02d}" for d in range(20, 28)]  # Mon 20th … Mon 27th
 
@@ -140,6 +141,128 @@ def test_a_gift_card_has_nothing_to_decide():
     db.add_week_card("2026-07-26", 2, 6, 6, status="gift")
     assert db.set_week_card_status("2026-07-26", 2, "shared") is False
     assert db.get_week_card("2026-07-26", 2)["status"] == "gift"
+
+
+def test_shared_week_card_heart_toggles_and_tracks_every_copy():
+    week_end = "2026-07-26"
+    db.add_week_card(week_end, 1, 7, 9)
+    assert db.set_week_card_status(week_end, 1, "shared") is True
+
+    assert db.toggle_week_card_like(week_end, 1, 2) is True
+    assert db.toggle_week_card_like(week_end, 1, 3) is True
+    assert db.week_card_like_count(week_end, 1) == 2
+    assert db.week_card_likers(week_end, 1) == [2, 3]
+    assert db.toggle_week_card_like(week_end, 1, 2) is False
+    assert db.week_card_like_count(week_end, 1) == 1
+
+    db.add_week_card_message(week_end, 1, 1, 100)
+    db.add_week_card_message(week_end, 1, 2, 200)
+    db.add_week_card_message(week_end, 1, 2, 201)
+    copies = {
+        r["tg_id"]: r["message_id"]
+        for r in db.week_card_messages_for(week_end, 1)
+    }
+    assert copies == {1: 100, 2: 201}
+
+    row = jobs.week_card_heart_keyboard(week_end, 1).inline_keyboard[0]
+    assert [b.text for b in row] == ["❤️ 1"]
+    assert row[0].callback_data == f"wkh:{week_end}:1"
+
+
+def test_reset_week_cards_also_clears_hearts_and_copy_bookkeeping():
+    week_end = "2026-07-26"
+    db.add_week_card(week_end, 1, 7, 9)
+    db.set_week_card_status(week_end, 1, "shared")
+    db.toggle_week_card_like(week_end, 1, 2)
+    db.add_week_card_message(week_end, 1, 2, 200)
+
+    assert db.delete_week_cards(week_end) == 1
+    assert db.week_card_like_count(week_end, 1) == 0
+    assert db.week_card_messages_for(week_end, 1) == []
+
+
+def test_sharing_puts_the_same_heart_under_every_public_copy(monkeypatch):
+    week_end = "2026-07-26"
+    for uid in (1, 2, 3):
+        db.upsert_user(uid, f"User{uid}", None)
+    db.add_week_card(week_end, 1, 7, 9)
+    db.set_week_card_status(week_end, 1, "shared")
+    db.set_week_card_file_id(week_end, 1, "telegram-file")
+    db.add_week_card_message(week_end, 1, 1, 100)
+
+    class Bot:
+        def __init__(self):
+            self.sent = []
+            self.next_id = 200
+
+        async def send_photo(self, chat_id, photo, **kwargs):
+            self.sent.append((chat_id, photo, kwargs))
+            self.next_id += 1
+            return SimpleNamespace(message_id=self.next_id)
+
+    async def no_notice(context, text):
+        return None
+
+    monkeypatch.setattr(jobs, "notify_admins", no_notice)
+    bot = Bot()
+    sent = asyncio.run(
+        jobs.share_week_card(SimpleNamespace(bot=bot), week_end, 1)
+    )
+
+    assert sent == 2
+    assert {uid for uid, _, _ in bot.sent} == {2, 3}
+    for _, file_id, kwargs in bot.sent:
+        assert file_id == "telegram-file"
+        button = kwargs["reply_markup"].inline_keyboard[0][0]
+        assert button.text == "❤️"
+        assert button.callback_data == f"wkh:{week_end}:1"
+    assert {r["tg_id"] for r in db.week_card_messages_for(week_end, 1)} == {
+        1,
+        2,
+        3,
+    }
+
+
+def test_a_week_card_heart_refreshes_the_live_tally_everywhere():
+    week_end = "2026-07-26"
+    db.upsert_user(2, "Reader", None)
+    db.add_week_card(week_end, 1, 7, 9)
+    db.set_week_card_status(week_end, 1, "shared")
+    db.add_week_card_message(week_end, 1, 1, 100)
+    db.add_week_card_message(week_end, 1, 2, 200)
+
+    class Query:
+        data = f"wkh:{week_end}:1"
+
+        def __init__(self):
+            self.answers = []
+
+        async def answer(self, text=None):
+            self.answers.append(text)
+
+    class Bot:
+        def __init__(self):
+            self.edits = []
+
+        async def edit_message_reply_markup(self, **kwargs):
+            self.edits.append(kwargs)
+
+    query = Query()
+    bot = Bot()
+    update = SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=2),
+    )
+    asyncio.run(usr.on_week_card_like(update, SimpleNamespace(bot=bot)))
+
+    assert db.week_card_like_count(week_end, 1) == 1
+    assert len(bot.edits) == 2
+    assert {edit["chat_id"] for edit in bot.edits} == {1, 2}
+    assert all(
+        edit["reply_markup"].inline_keyboard[0][0].text == "❤️ 1"
+        for edit in bot.edits
+    )
+    assert query.answers == ["Your ❤️ is in — the author will see it!"]
 
 
 @pytest.mark.parametrize("filled", [7, 5])

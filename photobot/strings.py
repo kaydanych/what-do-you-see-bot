@@ -138,6 +138,8 @@ STRINGS = {
         "WEEK_CARD_SHARED": "Показал твою неделю всем 🖼 Спасибо!",
         "WEEK_CARD_KEPT": "Ок, она остаётся только у тебя 🤫",
         "WEEK_CARD_GONE": "Эта неделя уже закрыта 🙂",
+        "WEEK_CARD_LIKED": "Твоё ❤️ засчитано — автор увидит!",
+        "WEEK_CARD_UNLIKED": "Ок, убрал ❤️",
         "WEEK_CARD_PUBLIC": (
             "🔥 Серия недели — {name}\n\n"
             "{n} дней подряд, дольше всех в игре сейчас. Вот эта неделя целиком, "
@@ -346,6 +348,8 @@ STRINGS = {
         "WEEK_CARD_SHARED": "Your week is out there 🖼 Thank you!",
         "WEEK_CARD_KEPT": "OK — it stays with you 🤫",
         "WEEK_CARD_GONE": "That week is already closed 🙂",
+        "WEEK_CARD_LIKED": "Your ❤️ is in — the author will see it!",
+        "WEEK_CARD_UNLIKED": "OK, took your ❤️ back",
         "WEEK_CARD_PUBLIC": (
             "🔥 Streak of the week — {name}\n\n"
             "{n} days in a row, the longest run in the game right now. Here is "

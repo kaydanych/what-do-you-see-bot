@@ -442,15 +442,59 @@ async def on_week_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if not db.set_week_card_status(week_end, u.id, "shared" if action == "s" else "kept"):
         await _answer(query, t(lang, "WEEK_CARD_GONE"))
         return
+    if action == "s":
+        message = getattr(query, "message", None)
+        if message is not None:
+            db.add_week_card_message(week_end, u.id, u.id, message.message_id)
+        keyboard = jobs.week_card_heart_keyboard(week_end, u.id)
+    else:
+        keyboard = None
     try:
-        await query.edit_message_reply_markup(reply_markup=None)
+        await query.edit_message_reply_markup(reply_markup=keyboard)
     except Exception:
-        log.debug("week card keyboard removal failed for %s/%s", u.id, week_end)
+        log.debug("week card keyboard update failed for %s/%s", u.id, week_end)
     if action == "s":
         await _answer(query, t(lang, "WEEK_CARD_SHARED"))
         await jobs.share_week_card(context, week_end, u.id)
     else:
         await _answer(query, t(lang, "WEEK_CARD_KEPT"))
+
+
+async def on_week_card_like(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Toggle a ❤️ and refresh its live tally on every copy of a shared week."""
+    query = update.callback_query
+    u = update.effective_user
+    lang = db.get_user_lang(u.id)
+    try:
+        _, week_end, card_tg_id_s = query.data.split(":", 2)
+        card_tg_id = int(card_tg_id_s)
+    except (ValueError, TypeError):
+        await _answer(query)
+        return
+    card = db.get_week_card(week_end, card_tg_id)
+    if card is None or card["status"] != "shared":
+        await _answer(query, t(lang, "WEEK_CARD_GONE"))
+        return
+    liked = db.toggle_week_card_like(week_end, card_tg_id, u.id)
+    await _answer(
+        query,
+        t(lang, "WEEK_CARD_LIKED" if liked else "WEEK_CARD_UNLIKED"),
+    )
+    keyboard = jobs.week_card_heart_keyboard(week_end, card_tg_id)
+    for row in db.week_card_messages_for(week_end, card_tg_id):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"],
+                message_id=row["message_id"],
+                reply_markup=keyboard,
+            )
+        except Exception:
+            log.debug(
+                "week card heart update failed for %s/%s/%s",
+                week_end,
+                card_tg_id,
+                row["tg_id"],
+            )
 
 
 async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
