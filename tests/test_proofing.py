@@ -2,6 +2,7 @@
 one 👍 publishes it, a double-confirmed 🚫 escalates, two 🚫 park it on the admin.
 """
 import asyncio
+import re
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -29,25 +30,25 @@ DATE = "2026-07-28"
 TG_MAX = 4096
 
 
-def test_admin_help_is_sent_in_sendable_chunks():
-    """/admin died with 'Message is too long' once the proofing section pushed
-    it past Telegram's limit, so the split is now enforced here."""
-    chunks = adm.help_chunks(adm.ADMIN_HELP)
-    assert all(len(c) <= TG_MAX for c in chunks)
-    # nothing is dropped and the sections keep their order
-    assert "\n\n".join(chunks) == adm.ADMIN_HELP
-    # sections stay whole: every chunk starts a section, never mid-list
-    assert all(not c.startswith(("/", "•", " ")) for c in chunks)
+def test_admin_menus_each_fit_one_telegram_message():
+    assert len(adm.ADMIN_HELP) <= TG_MAX
+    assert len(adm.ADMIN_SHORTCUTS) <= TG_MAX
 
 
-def test_help_chunks_packs_sections_then_splits():
-    text = "\n\n".join(["A" * 1000, "B" * 1000, "C" * 1000])
-    chunks = adm.help_chunks(text, limit=2100)
-    # the first two sections share a message; the third would overflow it
-    assert [len(c) for c in chunks] == [1000 + 2 + 1000, 1000]
-    assert chunks[1] == "C" * 1000
-    # a single section bigger than the limit is still cut into sendable pieces
-    assert [len(c) for c in adm.help_chunks("X" * 350, limit=100)] == [100] * 3 + [50]
+def test_full_shortcuts_list_every_admin_command_once():
+    commands = re.findall(r"/([a-z_]+)", adm.ADMIN_SHORTCUTS)
+    assert len(commands) == len(set(commands))
+    assert set(commands) == {
+        "addprompt", "admin", "approve", "askstory", "ban", "broadcast",
+        "delcollage", "delprompt", "dismiss", "dismissstory", "dm",
+        "editstory", "errors", "exclude", "exportprompts", "feedback_all",
+        "forcecollage", "forceprompt", "include", "kick", "knocks", "pending",
+        "photos", "poll", "pollclose", "polledit", "pollresults", "polls",
+        "preview", "proofer", "proofers", "proofing", "prompts", "publishstory",
+        "setru", "settimes", "skipday", "stats", "status", "stories",
+        "shortcuts", "suggestions", "times", "unkick", "users", "version",
+        "weekcard", "weekcards",
+    }
 
 
 class FakeBot:

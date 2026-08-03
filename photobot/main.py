@@ -150,6 +150,7 @@ def build_app() -> Application:
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
+    app.add_handler(CommandHandler("shortcuts", adm.cmd_shortcuts))
     app.add_handler(CommandHandler("status", adm.cmd_status))
     app.add_handler(CommandHandler("users", adm.cmd_users))
     app.add_handler(CommandHandler("pending", adm.cmd_pending))

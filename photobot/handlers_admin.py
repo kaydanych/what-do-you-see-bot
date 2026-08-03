@@ -20,109 +20,77 @@ from .strings import t
 
 log = logging.getLogger(__name__)
 
-ADMIN_HELP = """Admin commands
+ADMIN_HELP = """🛠 Admin
+
+📅 /status  /pending  /preview
+🖼 /photos  /knocks  /stories  /proofing
+📝 /prompts  /suggestions  /polls
+👥 /users  /stats  /feedback_all
+🗓 /times  /weekcard  /weekcards
+⚙️ /errors  /version
+
+⌨️ /shortcuts — all admin commands"""
+
+
+ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 
 📊 Overview
-/broadcast <text> — message all active users (EN | RU; EN is the fallback)
-/dm <id|@username> <text> — privately message one registered user through the bot
-/errors — last log lines
-/stats — participation leaderboard + collage ratings
-/status — today at a glance
-/users — user list
-/version — which build is running (deployed commit)
+/status  /pending  /users  /stats  /errors  /version
 
-🚪 New users (nobody joins unseen)
-Every newcomer lands on a waiting list and you get their card with ✅ / 🚫.
-Until you tap ✅ they are outside everything — no prompt, reminder, collage,
-poll or broadcast. Their free-text messages are relayed only to admins; other
-input gets a "you're on the list" note. ✅ greets them and starts the game, 🚫
-closes the door (/unkick undoes it, /kick undoes a ✅). They show as ⏳ in /users.
-/pending — everyone still waiting, with the buttons again
-Use “💬 Ask who they are” or /dm; text replies from pending users come back here.
+✉️ Messages
+/dm <id|@username> <text>
+/broadcast <EN> | <RU>
 
-📝 Prompts (the queue)
-/addprompt <en> | <ru> — append a prompt (| and RU optional; EN is what everyone gets)
-/delprompt <id> — delete a prompt
-/exportprompts — download the unused queue as a plain .txt (no ids) to reorder/edit
-/prompts — queue overview (sent ones struck through, next one flagged)
-/setru <id> <ru text> — add/replace a prompt's Russian version
-• Reorder the queue: /exportprompts → drag lines in any editor → re-upload the .txt
-• Upload a .txt (one prompt per line) to REPLACE the queue in that order;
-  already-sent prompts are kept as done and never repeat
+📝 Prompts
+/prompts  /exportprompts
+/addprompt <EN> | <RU>
+/setru <id> <RU>
+/delprompt <id>
 
-💡 Suggestions & feedback
-/approve <id> [en | ru] — approve a suggestion; the suggester's name is baked into the prompt text as "Idea: Name". One /approve per line to batch several.
-/dismiss <id> — discard a suggestion
-/feedback_all — every /feedback message users have sent, in one place
-/suggestions — pending user prompt ideas
+💡 Suggestions
+/suggestions  /feedback_all
+/approve <id> [EN | RU]
+/dismiss <id>
 
-📊 Polls (custom 👍/👎 questions to all active users, live shared tally)
-/poll <question> — create + send a poll (use <EN> | <RU> for both languages)
-/polls — list polls with their tallies
-/pollresults <id> — full tally + who voted
-/polledit <id> <new question> — fix the wording; rewrites every copy sent
-/pollclose <id> — end voting (tallies stay, taps stop)
+📊 Polls
+/polls
+/poll <EN> | <RU>
+/pollresults <id>
+/polledit <id> <EN> | <RU>
+/pollclose <id>
 
-🗓 Schedule & daily cycle
-/forceprompt — send today's prompt now
-/settimes key=… — e.g. prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10
-  (final = last-call reminder N min before deadline; preview = evening heads-up of tomorrow's prompt)
-/skipday — cancel today
-/times — show schedule
+🗓 Day
+/times
+/settimes key=value …
+/forceprompt  /skipday
 
-🖼 Collage & moderation
-At the deadline you get a numbered contact sheet. With proofing off the collage
-waits for you, with nudges 10/30/60 min after the deadline while unsent; with
-proofing on it goes out as soon as a proofer waves it through (see below).
-/ban N — drop photo N and kick its author
-/delcollage [YYYY-MM-DD] — delete a sent collage everywhere (Telegram allows this only within 48 h) and reset the day
-/exclude N — drop photo N from today's collage
-/forcecollage [YYYY-MM-DD] — send the reviewed collage to everyone (default today)
-/include N — undo an exclusion
-/kick <id|@username> — remove a user
-/preview — collage dry-run, sent only to you
-/unkick <id|@username> — restore a user
+🖼 Collage
+/preview
+/exclude <N>  /include <N>  /ban <N>
+/forcecollage [date]
+/delcollage [date]
 
-👀 Proofing (trusted users check the collage before it goes out)
-Keep a long list of people you trust; each night 3 are picked at random from
-whoever on it played that day. At the deadline the collage — no names — goes to them,
-unannounced, asking whether anything is wrong; the rules ride in that message.
-One 👍 publishes it. A 🚫 (they confirm it twice) freezes the publish and rolls
-to a fresh 3; two 🚫 park the day on you with their notes — then /exclude N and
-/forcecollage, or /forcecollage as is. Silence rolls to the next 3 every 10
-min; when the list runs out you get the nudges, as before. Once the day is
-decided, the question is deleted from anyone who hadn't answered.
-/proofers — who's on the list and when they were last asked
-/proofers add|remove <id> <id> … — bulk edit, safe to re-run
-/proofer <id|@username> — toggle one (silent — nobody is ever notified)
-/proofing — settings + tonight's state
-/proofing batch=3 round=10 quorum=2 — tune it
-/proofing off — back to the admin-only flow
+👀 Proofing
+/proofers [add|remove <user> …]
+/proofer <user>
+/proofing [off|batch=3 round=10 quorum=2]
 
-💬 Story of the day (the photo + why the author chose it)
-/photos [YYYY-MM-DD] — numbered author list for a day (numbers = the contact sheet)
-/knocks [YYYY-MM-DD] — who the group knocked on; ranked, then the leader as a picture with their name — ‹ › through the tied ones and 💬 asks that author right there
-/askstory [YYYY-MM-DD] N — DM author N their photo and ask why they chose it
-/askstory random — pick a random past photo and ask its author
-/stories — story requests: who is still replying and what is ready to publish
-/editstory <id> <text> — edit a story's text (or write one yourself); <EN> | <RU> stores both languages, each reader gets their half
-/publishstory <id> — send that photo + story to everyone in the game (reveals the author's name); it carries a ❤️ button with a live shared tally
-/publishstory <id> day — narrower: only that day's submitters, the audience the collage went to
-/dismissstory <id> — discard a story
+💬 Stories
+/photos [date]  /knocks [date]
+/askstory [date] <N> | random
+/stories
+/editstory <id> <EN> | <RU>
+/publishstory <id> [day]
+/dismissstory <id>
 
-🗓 Week card (Sunday 17:00, one person's own week back as one picture)
-Everyone with 5+ of the week's days gets their week rendered and sent to them —
-buttonless, a gift, nothing to decide. The streak leader alone is congratulated
-and asked «show everyone» / «keep it», and only their tap sends it to the group.
-When they share, every copy gets a ❤️ button with one live shared tally.
-Ties on the longest streak rotate: the crown goes to whoever was crowned least
-recently. The window ends the day *before* it runs (Sun–Sat), so it ignores
-Sunday's open submissions and never names an author whose knocks are still live.
-/weekcard — who qualifies for the current window (dry run, sends nothing)
-/weekcard send [YYYY-MM-DD] — offer the cards now (default window = ends yesterday)
-/weekcard me [YYYY-MM-DD] — same, but only your own card (safe way to look at it)
-/weekcards [YYYY-MM-DD] — what each author decided that week
-/settimes week=sun@21:45 | week=off — when it runs (or turn it off)"""
+🗓 Week cards
+/weekcard [send|me|reset] [date]
+/weekcards [date]
+
+👥 Access
+/kick <user>  /unkick <user>
+
+/admin — daily menu  ·  /shortcuts — this list"""
 
 
 # How each user status reads in a list. '⏳' is a newcomer still waiting for a
@@ -153,31 +121,14 @@ def admin_only(func):
     return wrapper
 
 
-HELP_CHUNK = 3800  # Telegram caps a message at 4096; leave room to breathe
-
-
-def help_chunks(text: str, limit: int = HELP_CHUNK) -> list[str]:
-    """Pack the blank-line-separated sections into as few messages as fit, so a
-    split lands between sections instead of halfway through a command list. A
-    single oversized section is hard-split as a last resort."""
-    chunks: list[str] = []
-    for section in text.split("\n\n"):
-        while len(section) > limit:
-            chunks.append(section[:limit])
-            section = section[limit:]
-        if chunks and len(chunks[-1]) + 2 + len(section) <= limit:
-            chunks[-1] += "\n\n" + section
-        else:
-            chunks.append(section)
-    return chunks
+@admin_only
+async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(ADMIN_HELP)
 
 
 @admin_only
-async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """The list outgrew Telegram's message limit once already (the proofing
-    section tipped it to 4142 chars), so it always goes out in chunks."""
-    for chunk in help_chunks(ADMIN_HELP):
-        await update.message.reply_text(chunk)
+async def cmd_shortcuts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(ADMIN_SHORTCUTS)
 
 
 @admin_only

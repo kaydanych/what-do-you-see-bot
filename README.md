@@ -129,7 +129,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m photobot.main
 ```
 
-Then in Telegram: `/start` the bot, `/admin` lists every admin command,
+Then in Telegram: `/start` the bot, `/admin` opens the daily admin menu,
+`/shortcuts` lists every admin command,
 `/addprompt Send a photo of water | Пришли фото с водой`, `/forceprompt` to
 fire it now, send a photo, `/preview` to see the collage.
 
@@ -148,7 +149,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 
 ## Running it day to day
 
-`/admin` prints the full list; the ones you'll actually use:
+`/admin` prints the compact daily menu; `/shortcuts` prints the full command list:
 
 | | |
 |---|---|
