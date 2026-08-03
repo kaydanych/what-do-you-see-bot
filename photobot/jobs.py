@@ -244,7 +244,12 @@ def verify_keyboard(tg_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton("✅ Approve", callback_data=f"verify:{tg_id}:ok"),
                 InlineKeyboardButton("🚫 Reject", callback_data=f"verify:{tg_id}:no"),
-            ]
+            ],
+            [
+                InlineKeyboardButton(
+                    "💬 Ask who they are", callback_data=f"verify:{tg_id}:ask"
+                )
+            ],
         ]
     )
 
@@ -256,6 +261,16 @@ def verify_card(user) -> str:
         f"👤 New user: {user['first_name']} {uname}\n"
         f"id {user['tg_id']} · first seen {joined}\n\n"
         "They're on hold and hear nothing from the bot until you decide."
+    )
+
+
+def pending_reply_card(user, text: str) -> str:
+    """Admin-facing relay of a waiting user's private text response."""
+    uname = f" @{user['username']}" if user["username"] else ""
+    return (
+        f"💬 Reply from {user['first_name']}{uname}\n"
+        f"id {user['tg_id']}\n\n"
+        f"{text[:3500]}"
     )
 
 

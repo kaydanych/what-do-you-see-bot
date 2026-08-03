@@ -200,6 +200,16 @@ STRINGS = {
             "каждого вручную. Напишу тебе сразу, как только тебя впустят — "
             "тогда и начнём 👋"
         ),
+        "VERIFY_IDENTITY_ASK": (
+            "Привет! Прежде чем впустить тебя в эту закрытую группу, расскажи, "
+            "пожалуйста, кто тебя пригласил и как ты знаешь организатора. "
+            "Просто ответь здесь — сообщение увидит только организатор."
+        ),
+        "ORGANIZER_MESSAGE": "💬 Сообщение от организатора:\n\n{text}",
+        "PENDING_REPLY_RELAYED": (
+            "Спасибо — передал твоё сообщение организатору. Ты пока остаёшься "
+            "в списке ожидания; я напишу, как только тебя впустят 👋"
+        ),
         "APPROVED": "✅ Тебя впустили — добро пожаловать!",
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
@@ -408,6 +418,16 @@ STRINGS = {
             "This game is small and almost family-sized, so the organizer lets "
             "everyone in by hand. I'll message you the moment you're in — and "
             "then we start 👋"
+        ),
+        "VERIFY_IDENTITY_ASK": (
+            "Hi! Before I let you into this private group, could you tell me "
+            "who invited you and how you know the organizer? Just reply here — "
+            "only the organizer will see your message."
+        ),
+        "ORGANIZER_MESSAGE": "💬 Message from the organizer:\n\n{text}",
+        "PENDING_REPLY_RELAYED": (
+            "Thanks — I've passed your message to the organizer. You're still "
+            "on the waiting list for now; I'll message you as soon as you're in 👋"
         ),
         "APPROVED": "✅ You're in — welcome!",
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",

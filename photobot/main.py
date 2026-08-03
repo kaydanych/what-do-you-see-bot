@@ -174,6 +174,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("proofing", adm.cmd_proofing))
     app.add_handler(CommandHandler("skipday", adm.cmd_skipday))
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
+    app.add_handler(CommandHandler("dm", adm.cmd_dm))
     app.add_handler(CommandHandler("kick", adm.cmd_kick))
     app.add_handler(CommandHandler("unkick", adm.cmd_unkick))
     app.add_handler(CommandHandler("stats", adm.cmd_stats))

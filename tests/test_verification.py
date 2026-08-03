@@ -110,7 +110,11 @@ def test_a_newcomer_waits_and_the_admin_gets_the_buttons():
     assert [r["tg_id"] for r in db.pending_users()] == [7]
     # the admin's card carries the two buttons
     assert "New user: Anna @anna_k" in bot.texts_to(ADMIN)
-    assert bot.buttons_to(ADMIN) == ["✅ Approve", "🚫 Reject"]
+    assert bot.buttons_to(ADMIN) == [
+        "✅ Approve",
+        "🚫 Reject",
+        "💬 Ask who they are",
+    ]
     # and the newcomer is asked to pick a language, not held silently
     assert replies == ["Choose your language / Выбери язык:"]
 
@@ -132,7 +136,7 @@ def test_the_wait_is_explained_in_their_own_language():
     assert db.get_user(7)["status"] == "pending"
 
 
-def test_a_pending_user_gets_the_hold_note_instead_of_playing():
+def test_a_pending_user_stays_out_of_the_game_and_text_goes_to_the_admin():
     bot = FakeBot()
     context = ctx(bot)
     start(context, 7)
@@ -142,8 +146,10 @@ def test_a_pending_user_gets_the_hold_note_instead_of_playing():
     asyncio.run(usr.cmd_today(message_from(7, "/today", replies), context))
     asyncio.run(usr.on_other(message_from(7, "hello?", replies), context))
 
-    assert all("You're on the list" in r for r in replies)
-    assert len(replies) == 3
+    assert all("You're on the list" in r for r in replies[:2])
+    assert "passed your message to the organizer" in replies[2]
+    assert "Reply from Anna" in bot.texts_to(ADMIN)
+    assert db.active_user_ids() == []
 
 
 def test_repeated_starts_do_not_pile_up_cards_or_promote_anyone():
@@ -179,6 +185,75 @@ def test_stop_then_start_does_not_slip_past_the_gate():
     start(context, 7)
     assert db.get_user(7)["status"] == "pending"
     assert db.active_user_ids() == []
+
+
+def test_admin_can_ask_who_a_pending_user_is_and_their_reply_is_relayed():
+    bot = FakeBot()
+    context = ctx(bot)
+    start(context, 7)
+    db.set_user_lang(7, "en")
+
+    query = tap(context, "verify:7:ask")
+
+    assert query.answers == ["Question sent 💬"]
+    assert "who invited you" in bot.texts_to(7)
+    assert db.get_user(7)["status"] == "pending"
+
+    replies: list[str] = []
+    asyncio.run(
+        usr.on_other(
+            message_from(7, "Dafna invited me — we work together.", replies),
+            context,
+        )
+    )
+
+    assert "Reply from Anna @anna_k" in bot.texts_to(ADMIN)
+    assert "Dafna invited me — we work together." in bot.texts_to(ADMIN)
+    assert bot.buttons_to(ADMIN)[-3:] == [
+        "✅ Approve",
+        "🚫 Reject",
+        "💬 Ask who they are",
+    ]
+    assert replies == [
+        "Thanks — I've passed your message to the organizer. You're still on "
+        "the waiting list for now; I'll message you as soon as you're in 👋"
+    ]
+    assert db.get_user(7)["status"] == "pending"
+    assert db.active_user_ids() == []
+
+
+def test_identity_question_is_bilingual_until_the_user_picks_a_language():
+    bot = FakeBot()
+    context = ctx(bot)
+    start(context, 7)
+
+    tap(context, "verify:7:ask")
+
+    assert "who invited you" in bot.texts_to(7)
+    assert "кто тебя пригласил" in bot.texts_to(7)
+
+
+def test_admin_can_dm_a_registered_user_by_large_telegram_id():
+    bot = FakeBot()
+    context = ctx(bot)
+    uid = 8_280_321_049
+    start(context, uid, name="Dafna")
+    db.set_user_lang(uid, "en")
+    replies: list[str] = []
+    update = message_from(
+        ADMIN,
+        f"/dm {uid} Hi Dafna!\nWho invited you?",
+        replies,
+        name="Nikita",
+    )
+
+    asyncio.run(adm.cmd_dm(update, context))
+
+    assert bot.texts_to(uid).endswith(
+        "💬 Message from the organizer:\n\nHi Dafna!\nWho invited you?"
+    )
+    assert replies == [f"💬 Sent to Dafna (id {uid}, pending)."]
+    assert db.get_user(uid)["status"] == "pending"
 
 
 # --- the decision -------------------------------------------------------------

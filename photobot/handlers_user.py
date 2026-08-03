@@ -704,6 +704,30 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     pending /feedback or /suggest_prompt message."""
     if update.message is None:
         return
+    uid = update.effective_user.id
+    row = db.get_user(uid)
+    if row is not None and row["status"] == "pending" and update.message.text:
+        # Pending people remain outside the game, but a private text response is
+        # useful for identifying them. Relay it only to admins and keep the
+        # verification buttons attached so the decision can happen right there.
+        db.upsert_user(
+            uid,
+            update.effective_user.first_name or "",
+            update.effective_user.username,
+            "pending",
+        )
+        row = db.get_user(uid)
+        text = update.message.text.strip()
+        if text:
+            await jobs.notify_admins(
+                context,
+                jobs.pending_reply_card(row, text),
+                jobs.verify_keyboard(uid),
+            )
+            await update.message.reply_text(
+                t(row["lang"], "PENDING_REPLY_RELAYED")
+            )
+            return
     if not await _register(update, context):
         return
     # A tapped /feedback or /suggest_prompt, or a held collage, left us waiting

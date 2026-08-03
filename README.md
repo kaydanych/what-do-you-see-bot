@@ -140,6 +140,9 @@ Tests: `.venv/bin/python -m pytest tests/`
 > get their card with **✅ Approve / 🚫 Reject** buttons. Until you tap ✅ they
 > receive no prompt, reminder or collage — just a note saying they're on the
 > list. `/pending` brings the cards back if one scrolls away.
+> If the name is unfamiliar, tap **💬 Ask who they are**. Their text reply is
+> relayed only to the admins, without admitting them to the game. Admins can
+> also send a custom private note with `/dm <id|@username> <text>`.
 > For a harder line, set `ALLOWED_IDS` to a comma-separated list of user ids and
 > the bot ignores everyone else outright.
 
@@ -151,6 +154,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 |---|---|
 | `/status` | today at a glance — prompt sent? who's in? collage pending? |
 | `/pending` | newcomers waiting to be let in — ✅ / 🚫 right there in the chat |
+| `/dm ID text` | privately message one registered user through the bot |
 | `/exclude N` · `/include N` · `/ban N` | moderate the contact sheet |
 | `/preview` · `/forcecollage` | see it, then send it |
 | `/proofers` · `/proofer @who` · `/proofing` | who checks the collage for you, and how |

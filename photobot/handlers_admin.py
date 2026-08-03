@@ -24,6 +24,7 @@ ADMIN_HELP = """Admin commands
 
 📊 Overview
 /broadcast <text> — message all active users (EN | RU; EN is the fallback)
+/dm <id|@username> <text> — privately message one registered user through the bot
 /errors — last log lines
 /stats — participation leaderboard + collage ratings
 /status — today at a glance
@@ -33,10 +34,11 @@ ADMIN_HELP = """Admin commands
 🚪 New users (nobody joins unseen)
 Every newcomer lands on a waiting list and you get their card with ✅ / 🚫.
 Until you tap ✅ they are outside everything — no prompt, reminder, collage,
-poll or broadcast — and each message they send gets a "you're on the list"
-note. ✅ greets them and starts the game, 🚫 closes the door (/unkick undoes it,
-/kick undoes a ✅). They show as ⏳ in /users.
+poll or broadcast. Their free-text messages are relayed only to admins; other
+input gets a "you're on the list" note. ✅ greets them and starts the game, 🚫
+closes the door (/unkick undoes it, /kick undoes a ✅). They show as ⏳ in /users.
 /pending — everyone still waiting, with the buttons again
+Use “💬 Ask who they are” or /dm; text replies from pending users come back here.
 
 📝 Prompts (the queue)
 /addprompt <en> | <ru> — append a prompt (| and RU optional; EN is what everyone gets)
@@ -1315,6 +1317,35 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await update.message.reply_text(note)
 
 
+@admin_only
+async def cmd_dm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send one private message through the bot, including to a pending user."""
+    parts = (update.message.text or "").split(None, 2)
+    if len(parts) < 3 or not parts[2].strip():
+        await update.message.reply_text("Usage: /dm <id|@username> <text>")
+        return
+    target, body = parts[1], parts[2].strip()
+    row = _resolve_user(target)
+    if row is None:
+        await update.message.reply_text("User not found (try /users for the ids).")
+        return
+    try:
+        await context.bot.send_message(
+            row["tg_id"],
+            t(row["lang"], "ORGANIZER_MESSAGE", text=body),
+        )
+    except Exception as exc:
+        log.warning("direct message to %s failed: %s", row["tg_id"], exc)
+        await update.message.reply_text(
+            f"⚠️ Couldn't message {row['first_name']} (id {row['tg_id']}). "
+            "They may have blocked the bot."
+        )
+        return
+    await update.message.reply_text(
+        f"💬 Sent to {row['first_name']} (id {row['tg_id']}, {row['status']})."
+    )
+
+
 def _parse_poll_id(arg: str) -> int | None:
     try:
         return int(arg)
@@ -1481,6 +1512,19 @@ async def on_verify(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Another admin (or a /kick) already settled this; converge this copy.
         await query.answer("Already handled.")
         await query.edit_message_text(f"👤 {who} — already {row['status']}.")
+        return
+
+    if action == "ask":
+        question = t(row["lang"], "VERIFY_IDENTITY_ASK")
+        if row["lang"] is None:
+            question += "\n\n———\n\n" + t("ru", "VERIFY_IDENTITY_ASK")
+        try:
+            await context.bot.send_message(uid, question)
+        except Exception:
+            log.exception("identity question to pending user %s failed", uid)
+            await query.answer("Couldn't message them — they may have blocked the bot.")
+            return
+        await query.answer("Question sent 💬")
         return
 
     if action == "ok":

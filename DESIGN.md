@@ -153,15 +153,16 @@ and is changed from the admin chat via `/proofing`.
 - Users join by opening the bot and sending `/start` (invite = just share the
   bot's `t.me/...` link).
 - **Nobody joins unseen.** A newcomer is created as `pending` and the admin gets
-  their card — name, @username, id, first seen — with two inline buttons,
-  ✅ Approve / 🚫 Reject. This is the answer to the old open question: the game
+  their card — name, @username, id, first seen — with ✅ Approve, 🚫 Reject and
+  💬 Ask who they are. This is the answer to the old open question: the game
   is small and almost family-sized, so notify-and-kick (letting a stranger in
   and removing them afterwards) was the wrong default.
   - While pending they are outside `active_user_ids()`, so **no** prompt,
-    reminder, collage, poll or broadcast reaches them; every message they send
-    gets the bilingual "you're on the list" note (`PENDING`) instead of being
-    acted on. They can still pick a language, so the wait — and the welcome that
-    follows — arrive in it.
+    reminder, collage, poll or broadcast reaches them. Commands and media get
+    the bilingual "you're on the list" note (`PENDING`); free text is privately
+    relayed to the admins and acknowledged without being treated as game input.
+    They can still pick a language, so the wait — and the welcome that follows —
+    arrive in it.
   - ✅ flips them to `active` and greets them there and then: the welcome, plus
     today's prompt if a day is open. Someone approved before choosing a language
     gets the picker first, and the welcome follows their tap.
@@ -169,6 +170,12 @@ and is changed from the admin chat via `/proofing`.
     are one tap and reversible with `/kick` / `/unkick`; the card is edited in
     place to say which, so a stale copy in a second admin's chat can't re-decide
     anything.
+  - The card also has **💬 Ask who they are**. It sends a localized identity
+    question without admitting the person; any text they send while pending is
+    relayed only to the admins with the decision buttons attached. Admins can
+    send a custom one-to-one note to any registered user with
+    `/dm <id|@username> <text>`; usernames are optional because the stored
+    Telegram id is the private chat id.
   - `/pending` re-sends the cards, buttons and all, for when the original has
     scrolled away. Pending users show as ⏳ in `/users`, and `/status` counts
     them when any are waiting.
