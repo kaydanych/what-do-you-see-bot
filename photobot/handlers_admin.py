@@ -905,30 +905,13 @@ async def on_knock_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 async def _send_story_ask(
     update: Update, context: ContextTypes.DEFAULT_TYPE, date: str, photo
 ) -> None:
-    """DM the author their own photo + that day's prompt and ask why they chose
-    it, then record the pending story."""
+    """Ask from the admin surface, with the delivery done by the shared flow."""
     msg = update.effective_message
-    author_id = photo["tg_id"]
-    u = db.get_user(author_id)
-    name = u["first_name"] if u else str(author_id)
-    lang = db.get_user_lang(author_id)
-    day = db.get_day(date)
-    prompt = db.get_prompt(day["prompt_id"]) if day and day["prompt_id"] else None
-    ptext = jobs.prompt_text(prompt, lang) if prompt else "—"
-    try:
-        with open(photo["file_path"], "rb") as f:
-            ask = await context.bot.send_photo(
-                author_id, f, caption=t(lang, "STORY_ASK", prompt=ptext)
-            )
-    except Forbidden:
-        db.set_user_status(author_id, "inactive")
-        await msg.reply_text(f"{name} (id {author_id}) has blocked the bot — can't ask.")
-        return
-    except Exception as e:
-        await msg.reply_text(f"Couldn't ask {name} (id {author_id}): {e}")
+    sid, name, error = await jobs.request_story(context, date, photo)
+    if error:
+        await msg.reply_text(error)
         return
 
-    sid = db.add_story(date, author_id, ask.message_id)
     await msg.reply_text(
         f"💬 Asked {name} about their photo from {date}.\n"
         f"Story #{sid} is waiting for their reply — /stories to check."

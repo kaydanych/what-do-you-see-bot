@@ -227,6 +227,9 @@ def init(path: Path | str | None = None) -> None:
                 ("proof_asked_at", "TEXT"),
                 ("proof_round", "INTEGER NOT NULL DEFAULT 0"),
                 ("proof_result", "TEXT"),  # approved | held | exhausted
+                # Set after the next day's knock window has been dealt with.
+                # This makes the once-a-minute scheduler safe to retry.
+                ("knock_resolved_at", "TEXT"),
             ],
             "stories": [("text_ru", "TEXT")],
         }
@@ -450,6 +453,7 @@ def set_day_field(date: str, field: str, value) -> None:
         "proof_asked_at",
         "proof_round",
         "proof_result",
+        "knock_resolved_at",
         "skipped",
     }
     ensure_day(date)
@@ -859,6 +863,14 @@ def add_story(date: str, tg_id: int, ask_message_id: int | None) -> int:
 
 def get_story(sid: int) -> sqlite3.Row | None:
     return _exec("SELECT * FROM stories WHERE id=?", (sid,)).fetchone()
+
+
+def story_for_photo(date: str, tg_id: int) -> sqlite3.Row | None:
+    """Any request already made for this exact day's photo."""
+    return _exec(
+        "SELECT * FROM stories WHERE date=? AND tg_id=? ORDER BY id DESC LIMIT 1",
+        (date, tg_id),
+    ).fetchone()
 
 
 def pending_story_for(tg_id: int) -> sqlite3.Row | None:

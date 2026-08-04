@@ -305,6 +305,104 @@ async def send_to_users(
     return await send_per_user(context, user_ids, lambda _uid: text)
 
 
+async def request_story(
+    context: ContextTypes.DEFAULT_TYPE, date: str, photo
+) -> tuple[int | None, str, str | None]:
+    """Ask a photo's author for its story and remember the pending reply.
+
+    The request is shared by the admin command and the automatic knock result,
+    so both paths create exactly the same kind of pending story.
+    """
+    author_id = photo["tg_id"]
+    user = db.get_user(author_id)
+    name = user["first_name"] if user else str(author_id)
+    lang = db.get_user_lang(author_id)
+    day = db.get_day(date)
+    prompt = db.get_prompt(day["prompt_id"]) if day and day["prompt_id"] else None
+    prompt_text_for_author = prompt_text(prompt, lang) if prompt else "—"
+    try:
+        with open(photo["file_path"], "rb") as f:
+            ask = await context.bot.send_photo(
+                author_id, f, caption=t(lang, "STORY_ASK", prompt=prompt_text_for_author)
+            )
+    except Forbidden:
+        db.set_user_status(author_id, "inactive")
+        return None, name, f"{name} (id {author_id}) has blocked the bot — can't ask."
+    except Exception as exc:
+        log.exception("couldn't ask %s for story from %s", author_id, date)
+        return None, name, f"Couldn't ask {name} (id {author_id}): {exc}"
+
+    return db.add_story(date, author_id, ask.message_id), name, None
+
+
+async def resolve_yesterdays_knocks(
+    context: ContextTypes.DEFAULT_TYPE, now: datetime
+) -> None:
+    """At noon, ask the sole knock winner; leave ties for an admin to choose."""
+    if now.hour < KNOCK_CLOSE_HOUR:
+        return
+
+    date = (now.date() - timedelta(days=1)).isoformat()
+    day = db.get_day(date)
+    if not day or not day["collage_sent_at"] or day["knock_resolved_at"]:
+        return
+
+    tally = db.knock_tally(date)
+    if not tally:
+        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
+        await notify_admins(
+            context,
+            f"🚪 {date}: knock window closed — nobody knocked, so no story was requested.",
+        )
+        return
+
+    highest = tally[0]["n"]
+    leaders = [row for row in tally if row["n"] == highest]
+    if len(leaders) > 1:
+        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
+        await notify_admins(
+            context,
+            f"🚪 {date}: {len(leaders)} photos tied with {highest} knock(s). "
+            f"No story was requested — use /knocks {date} to choose one.",
+        )
+        return
+
+    winner_id = leaders[0]["target_id"]
+    # An admin might already have asked this author while the window was open.
+    existing = db.story_for_photo(date, winner_id)
+    if existing:
+        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
+        return
+
+    photo = db.get_photo(date, winner_id)
+    if photo is None:
+        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
+        await notify_admins(
+            context,
+            f"🚪 {date}: the knock winner's photo is gone, so no story was requested.",
+        )
+        return
+
+    sid, name, error = await request_story(context, date, photo)
+    if error:
+        # A blocked author cannot be retried; transient delivery errors are left
+        # unresolved so the next minute can try again. Those failures are logged
+        # in request_story; only a final, actionable outcome reaches admins.
+        if "has blocked the bot" in error:
+            db.set_day_field(
+                date, "knock_resolved_at", now.isoformat(timespec="seconds")
+            )
+            await notify_admins(context, f"🚪 {date}: {error}")
+        return
+
+    db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
+    await notify_admins(
+        context,
+        f"🚪 {date}: {name} won with {highest} knock(s) and was asked for their story. "
+        f"Story #{sid} is waiting for a reply.",
+    )
+
+
 async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     """Runs every minute; drives the whole daily cycle. Because it compares
     current time against DB settings, /settimes changes apply instantly and
@@ -318,6 +416,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     # The weekly card rides on its own clock, not the day's — it must still fire
     # on a skipped day, and it must not be starved by the early returns below.
     await maybe_offer_week_cards(context, now)
+    await resolve_yesterdays_knocks(context, now)
 
     # Admin-only heads-up (after the day's deadline) of what tomorrow's prompt
     # will be. Fires regardless of whether today ran or was skipped, so it also

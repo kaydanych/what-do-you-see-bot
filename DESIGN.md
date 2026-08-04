@@ -403,12 +403,13 @@ the prize.
 next day**. Knocking is restricted to that day's submitters, never on your own
 photo, and a knock can be *moved* while the window is open.
 
-**Resolution is manual.** `/knocks [date]` prints the ranked tally, then the
-leader as a picture captioned with their number, name and knock count. Tied
-leaders come as a carousel — `‹ · 💬 Ask this one · ›` — so the choice is made
-by looking at the photographs, not at a number. 💬 fires the existing
-`/askstory` flow for that author; a copyable `/askstory <date> ` stem covers
-reaching any other door.
+**Resolution is automatic unless tied.** At 12:00 the next day, the bot asks
+the sole top-knocked author for their story and notifies every admin that the
+request was sent. A tie is left for the admin: `/knocks [date]` prints the
+ranked tally, then shows the tied leaders as a carousel —
+`‹ · 💬 Ask this one · ›` — so the choice is made by looking at the photographs,
+not at a number. 💬 fires the existing `/askstory` flow for that author; a
+copyable `/askstory <date> ` stem still covers choosing any other door.
 
 The mosaic order is frozen into `collage_cells` at publish time. It used to be
 derived from `hash(date)`, which Python salts per process — a collage rebuilt
