@@ -40,6 +40,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 ✉️ Messages
 /dm <id|@username> <text>
 /broadcast <EN> | <RU>
+/askreminders
 
 📝 Prompts
 /prompts  /exportprompts
@@ -62,7 +63,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 🗓 Day
 /times
 /settimes key=value …
-/forceprompt  /skipday
+/pause  /resume  /forceprompt  /skipday
 
 🖼 Collage
 /preview
@@ -150,6 +151,8 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     day = db.get_day(today)
     t = {k: db.get_setting(k) for k in config.DEFAULT_SETTINGS}
     lines = [f"📅 {today}"]
+    if jobs.is_paused():
+        lines.append("⏸ Intermission: paused — /resume when the next season is ready")
     if day is None or not day["prompt_sent_at"]:
         state = "skipped" if (day and day["skipped"]) else "not sent yet"
         lines.append(f"Prompt: {state} (scheduled {t['prompt_time']})")
@@ -338,6 +341,7 @@ async def cmd_times(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"deadline = {db.get_setting('deadline_time')}\n"
         f"preview = {db.get_setting('preview_time')} (admin heads-up: tomorrow's prompt)\n"
         f"week card = {_week_schedule_label()}\n\n"
+        f"intermission = {'paused' if jobs.is_paused() else 'running'} (/pause or /resume)\n\n"
         "Change: /settimes prompt=09:00 reminder=19:00 final=10 deadline=21:00 preview=21:10\n"
         "(any subset; applies within a minute, no restart needed)\n"
         "Week card: /settimes week=sun@21:45 (or week=off)\n"
@@ -1164,6 +1168,9 @@ async def cmd_dismissstory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 @admin_only
 async def cmd_forceprompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if jobs.is_paused():
+        await update.message.reply_text("The bot is paused — /resume before sending a prompt.")
+        return
     today = jobs.now_local().date().isoformat()
     day = db.get_day(today)
     if day and day["prompt_sent_at"]:
@@ -1259,6 +1266,35 @@ async def cmd_skipday(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 @admin_only
+async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if jobs.is_paused():
+        await update.message.reply_text("Already paused ⏸ /resume when you are ready.")
+        return
+    db.set_setting("paused", "1")
+    await update.message.reply_text(
+        "Paused ⏸ No new prompts, reminders, previews, or weekly cards will be sent. "
+        "An already-open day can still finish its moderation and collage flow. "
+        "Use /resume to start scheduling again."
+    )
+
+
+@admin_only
+async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not jobs.is_paused():
+        await update.message.reply_text("The bot is already running.")
+        return
+    db.set_setting("paused", "0")
+    # Do not make a season-break Sunday retroactively deliver a week card.
+    week_end = jobs.week_end_for(jobs.last_week_run(jobs.now_local()))
+    if db.get_setting("week_card_last") < week_end:
+        db.set_setting("week_card_last", week_end)
+    await update.message.reply_text(
+        "Resumed ▶️ The normal schedule is live again. If you resume between the "
+        "prompt time and deadline, today's prompt will go out within a minute."
+    )
+
+
+@admin_only
 async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # split off just the "/broadcast" token so line breaks in the rest of the
     # message survive (context.args + " ".join would collapse them)
@@ -1280,6 +1316,20 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"\n🇷🇺 «{ru}»" if ru else ""
     )
     await update.message.reply_text(note)
+
+
+@admin_only
+async def cmd_askreminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ask everyone currently in the game which reminder cadence they prefer."""
+    sent, failed = await jobs.send_per_user(
+        context,
+        db.active_user_ids(),
+        lambda uid: t(db.get_user_lang(uid), "REMINDERS_ASK"),
+        lambda uid: usr.reminder_keyboard(db.get_user_lang(uid)),
+    )
+    await update.message.reply_text(
+        f"Reminder preference question: sent {sent}, failed {failed}."
+    )
 
 
 @admin_only

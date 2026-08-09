@@ -39,13 +39,14 @@ def test_full_shortcuts_list_every_admin_command_once():
     commands = re.findall(r"/([a-z_]+)", adm.ADMIN_SHORTCUTS)
     assert len(commands) == len(set(commands))
     assert set(commands) == {
-        "addprompt", "admin", "approve", "askstory", "ban", "broadcast",
+        "addprompt", "admin", "approve", "askreminders", "askstory", "ban",
+        "broadcast",
         "delcollage", "delprompt", "dismiss", "dismissstory", "dm",
         "editstory", "errors", "exclude", "exportprompts", "feedback_all",
-        "forcecollage", "forceprompt", "include", "kick", "knocks", "pending",
+        "forcecollage", "forceprompt", "include", "kick", "knocks", "pause", "pending",
         "photos", "poll", "pollclose", "polledit", "pollresults", "polls",
         "preview", "proofer", "proofers", "proofing", "prompts", "publishstory",
-        "setru", "settimes", "skipday", "stats", "status", "stories",
+        "resume", "setru", "settimes", "skipday", "stats", "status", "stories",
         "shortcuts", "suggestions", "times", "unkick", "users", "version",
         "weekcard", "weekcards",
     }

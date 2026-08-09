@@ -187,7 +187,8 @@ and is changed from the admin chat via `/proofing`.
   is auto-marked inactive — no crash, no retry storm.
 
 **User commands:** `/start`, `/stop`, `/help`, `/today` (re-shows today's
-prompt and whether your photo is in).
+prompt and whether your photo is in), `/reminders` (choose the default evening
+and last-call nudges, or the morning prompt only).
 
 ## 6. Prompt library
 
@@ -280,6 +281,7 @@ happens in the bot chat:
 | `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
 | `/broadcast <text>` | Message all active users |
+| `/askreminders` | Ask active users whether they want both evening nudges or only the morning prompt |
 | `/kick <id|@username>`, `/unkick` | Remove/restore a user |
 | `/errors` | Last 20 error-log lines |
 

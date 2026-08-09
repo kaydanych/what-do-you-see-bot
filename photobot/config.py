@@ -33,6 +33,9 @@ DEFAULT_SETTINGS = {
     "preview_time": "21:10",  # admin-only heads-up: what tomorrow's prompt will be
     "final_reminder_min": "10",  # last-call reminder this many minutes before deadline
     "project_start_date": "2026-07-12",  # day 1; collage shows "Day N" counting from here
+    # A manual intermission between seasons. While paused, the scheduler never
+    # starts a new day or sends scheduled nudges/cards; /resume turns it back on.
+    "paused": "0",
     "deployed_commit": "",  # last build announced to admins (set on startup)
     # Collage proofing: trusted users see the collage before anyone else and one
     # 👍 publishes it. All of these are editable at runtime via /proofing.

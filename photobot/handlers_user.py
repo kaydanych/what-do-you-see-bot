@@ -45,6 +45,22 @@ def _lang_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([row])
 
 
+def reminder_keyboard(lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t(lang, "REMINDERS_ALL_BUTTON"), callback_data="reminders:all"
+                ),
+                InlineKeyboardButton(
+                    t(lang, "REMINDERS_MORNING_BUTTON"),
+                    callback_data="reminders:morning",
+                ),
+            ]
+        ]
+    )
+
+
 def day_status(now=None) -> tuple[str, dict | None]:
     """('none' | 'open' | 'late', day_row) for the current moment."""
     now = now or jobs.now_local()
@@ -196,6 +212,53 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     else:
         text += t(lang, "TODAY_NOT_SUBMITTED", deadline=jobs.deadline_label(lang))
     await update.message.reply_text(text)
+
+
+async def cmd_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show or change the user's post-prompt reminder preference."""
+    if not await _register(update, context):
+        return
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+    choice = context.args[0].lower() if context.args else None
+    values = {
+        "all": True,
+        "on": True,
+        "full": True,
+        "morning": False,
+        "off": False,
+    }
+    if choice is not None and choice not in values:
+        await update.message.reply_text(t(lang, "REMINDERS_USAGE"))
+        return
+    if choice is None:
+        key = "REMINDERS_CURRENT_ALL" if db.reminders_enabled(uid) else "REMINDERS_CURRENT_MORNING"
+        await update.message.reply_text(t(lang, key), reply_markup=reminder_keyboard(lang))
+        return
+    enabled = values[choice]
+    db.set_reminders_enabled(uid, enabled)
+    await update.message.reply_text(
+        t(lang, "REMINDERS_SET_ALL" if enabled else "REMINDERS_SET_MORNING")
+    )
+
+
+async def on_reminder_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    query = update.callback_query
+    row = db.get_user(update.effective_user.id)
+    if row is None or row["status"] != "active":
+        await _answer(query)
+        return
+    choice = query.data.split(":", 1)[1]
+    if choice not in {"all", "morning"}:
+        await _answer(query)
+        return
+    enabled = choice == "all"
+    db.set_reminders_enabled(update.effective_user.id, enabled)
+    lang = db.get_user_lang(update.effective_user.id)
+    await _answer(query, t(lang, "REMINDERS_SET_ALL" if enabled else "REMINDERS_SET_MORNING"))
+    await query.edit_message_reply_markup(reply_markup=None)
 
 
 async def _store_feedback(

@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS users (
     username   TEXT,
     status     TEXT NOT NULL DEFAULT 'active',   -- active | inactive | kicked
     joined_at  TEXT,
-    kicked_at  TEXT
+    kicked_at  TEXT,
+    reminders_enabled INTEGER NOT NULL DEFAULT 1 -- evening + final submission nudges
 );
 CREATE TABLE IF NOT EXISTS prompts (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -211,6 +212,9 @@ def init(path: Path | str | None = None) -> None:
                 ("lang", "TEXT"),
                 ("proofer", "INTEGER NOT NULL DEFAULT 0"),
                 ("last_proofed_on", "TEXT"),
+                # Everyone starts with both evening nudges.  A user can choose
+                # "morning only" without opting out of the daily prompt itself.
+                ("reminders_enabled", "INTEGER NOT NULL DEFAULT 1"),
             ],
             # file_id: Telegram's own handle for the submitted photo. Re-sending
             # it in the knock carousel costs one tiny API call instead of an
@@ -336,6 +340,21 @@ def list_users() -> list[sqlite3.Row]:
 def active_user_ids() -> list[int]:
     rows = _exec("SELECT tg_id FROM users WHERE status='active'").fetchall()
     return [r["tg_id"] for r in rows]
+
+
+def reminders_enabled(tg_id: int) -> bool:
+    """Whether this user wants the two post-prompt submission nudges."""
+    row = get_user(tg_id)
+    # The fallback keeps an old database safe even before its migration has
+    # completed, and makes the product default explicit.
+    return row is None or bool(row["reminders_enabled"])
+
+
+def set_reminders_enabled(tg_id: int, enabled: bool) -> None:
+    _exec(
+        "UPDATE users SET reminders_enabled=? WHERE tg_id=?",
+        (int(enabled), tg_id),
+    )
 
 
 def pending_users() -> list[sqlite3.Row]:

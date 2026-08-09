@@ -27,7 +27,9 @@ STRINGS = {
             "получат общий коллаж дня.\n\n"
             "Ближе к вечеру я мягко напомню, а потом ещё раз — незадолго до "
             "дедлайна. Хочешь заменить фото? Просто пришли новое — оно заменит "
-            "предыдущее.\n\n"
+            "предыдущее. По умолчанию напоминания включены; если хочешь получать "
+            "только утреннее задание, напиши /reminders morning. Вернуть оба "
+            "напоминания можно командой /reminders all.\n\n"
             "Есть идея для задания? Напиши /suggest_prompt и поделись ею. Если я "
             "выберу её для одного из дней, все увидят, что идея была твоей 💡\n\n"
             "Команды: /start — перезапустить · /today — задание дня · /feedback — "
@@ -61,6 +63,25 @@ STRINGS = {
             "🚨 Последний звонок: до дедлайна {minutes} мин, а твоего фото ещё нет!\n\n"
             "Задание на сегодня:\n{text}"
         ),
+        "REMINDERS_ASK": (
+            "Сколько напоминаний о фото тебе удобно получать?\n\n"
+            "Утреннее задание приходит всегда. Можно дополнительно получать "
+            "вечернее напоминание и последнее — незадолго до дедлайна, или оставить "
+            "только утреннее задание."
+        ),
+        "REMINDERS_ALL_BUTTON": "Все 3 уведомления",
+        "REMINDERS_MORNING_BUTTON": "Только утреннее",
+        "REMINDERS_SET_ALL": "Готово — буду присылать оба вечерних напоминания ⏰",
+        "REMINDERS_SET_MORNING": "Готово — оставил только утреннее задание 🌤",
+        "REMINDERS_CURRENT_ALL": (
+            "Сейчас включены утреннее задание и оба вечерних напоминания. "
+            "Выбери другой вариант ниже, если хочешь изменить настройку."
+        ),
+        "REMINDERS_CURRENT_MORNING": (
+            "Сейчас приходит только утреннее задание. Выбери другой вариант ниже, "
+            "если хочешь изменить настройку."
+        ),
+        "REMINDERS_USAGE": "Использование: /reminders all или /reminders morning",
         "IDEA_CREDIT": "Идея: {name}",
         "COLLAGE_CAPTION": "🖼 Коллаж дня — участников: {n}. До завтра!",
         "COLLAGE_CAPTION_SOLO": (
@@ -224,6 +245,7 @@ STRINGS = {
             "/today — задание дня и статус твоего фото\n"
             "/feedback <текст> — обратная связь организатору\n"
             "/suggest_prompt <идея> — предложить задание дня\n"
+            "/reminders — настроить вечерние напоминания\n"
             "/lang — сменить язык\n"
             "/stop — отписаться\n\n"
             "Код живёт на GitHub — github.com/kaydanych/what-do-you-see-bot"
@@ -245,12 +267,14 @@ STRINGS = {
             "everyone who took part receives that day's photo collage.\n\n"
             "I'll send one reminder in the evening and another shortly before the "
             "deadline. Want to swap your photo? Just send a new one — it replaces "
-            "the previous submission.\n\n"
+            "the previous submission. Both reminders are on by default; if you "
+            "prefer only the morning prompt, send /reminders morning. Bring them "
+            "back with /reminders all.\n\n"
             "Have an idea for a prompt? Send /suggest_prompt with it. If I choose "
             "it as the prompt of the day, everyone will see it was yours 💡\n\n"
             "Commands: /start — restart · /today — today's prompt · /feedback — "
             "share feedback · /suggest_prompt — suggest a prompt · /lang — change "
-            "language · /stop — unsubscribe\n\n"
+            "language · /reminders — choose evening reminders · /stop — unsubscribe\n\n"
             "It's still very much a work in progress, so I'd love your feedback — "
             "just send /feedback with a few words. Enjoy noticing!"
         ),
@@ -280,6 +304,25 @@ STRINGS = {
             "🚨 Last call: {minutes} min to the deadline and I still don't have "
             "your photo!\n\nToday's challenge:\n{text}"
         ),
+        "REMINDERS_ASK": (
+            "How many photo notifications would you like?\n\n"
+            "The morning prompt always arrives. You can also get an evening "
+            "reminder and a final nudge shortly before the deadline, or "
+            "keep just the morning prompt."
+        ),
+        "REMINDERS_ALL_BUTTON": "All 3 notifications",
+        "REMINDERS_MORNING_BUTTON": "Morning prompt only",
+        "REMINDERS_SET_ALL": "Done — I'll send both evening reminders ⏰",
+        "REMINDERS_SET_MORNING": "Done — I'll keep it to the morning prompt only 🌤",
+        "REMINDERS_CURRENT_ALL": (
+            "Your morning prompt and both evening reminders are on. Pick another "
+            "option below if you want to change this."
+        ),
+        "REMINDERS_CURRENT_MORNING": (
+            "You're set to receive only the morning prompt. Pick another option "
+            "below if you want to change this."
+        ),
+        "REMINDERS_USAGE": "Usage: /reminders all or /reminders morning",
         "IDEA_CREDIT": "Idea: {name}",
         "COLLAGE_CAPTION": "🖼 Collage of the day — {n} participants. See you tomorrow!",
         "COLLAGE_CAPTION_SOLO": (
@@ -443,6 +486,7 @@ STRINGS = {
             "/today — today's challenge and your photo status\n"
             "/feedback <text> — send feedback to the organizer\n"
             "/suggest_prompt <idea> — suggest a challenge of the day\n"
+            "/reminders — choose evening reminders\n"
             "/lang — change language\n"
             "/stop — unsubscribe\n\n"
             "The code lives on GitHub — github.com/kaydanych/what-do-you-see-bot"

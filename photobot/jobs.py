@@ -206,6 +206,16 @@ def get_times() -> dict:
     }
 
 
+def is_paused() -> bool:
+    """Whether the club is between seasons.
+
+    This is deliberately a DB setting rather than a process switch: an admin
+    can pause or resume from Telegram and a NAS restart cannot accidentally
+    start sending prompts again.
+    """
+    return db.get_setting("paused") == "1"
+
+
 def day_dir(date: str) -> Path:
     return config.PHOTOS_DIR / date
 
@@ -282,14 +292,18 @@ async def ask_admins_to_verify(context: ContextTypes.DEFAULT_TYPE, user) -> None
 
 
 async def send_per_user(
-    context: ContextTypes.DEFAULT_TYPE, user_ids: list[int], text_fn
+    context: ContextTypes.DEFAULT_TYPE, user_ids: list[int], text_fn, markup_fn=None
 ) -> tuple[int, int]:
     """Send text_fn(uid) to each user; auto-deactivate those who blocked the
     bot. Returns (sent, failed)."""
     sent = failed = 0
     for uid in user_ids:
         try:
-            await context.bot.send_message(uid, text_fn(uid))
+            await context.bot.send_message(
+                uid,
+                text_fn(uid),
+                reply_markup=markup_fn(uid) if markup_fn else None,
+            )
             sent += 1
         except Forbidden:
             db.set_user_status(uid, "inactive")
@@ -394,22 +408,32 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     t = get_times()
     day = db.get_day(today)
 
-    # The weekly card rides on its own clock, not the day's — it must still fire
-    # on a skipped day, and it must not be starved by the early returns below.
-    await maybe_offer_week_cards(context, now)
+    paused = is_paused()
+
+    # A pause is an intermission, not a broken in-flight day. Existing collage
+    # review/proofing below still runs, but scheduled participant content does
+    # not start during the break.
+    if not paused:
+        # The weekly card rides on its own clock, not the day's — it must still
+        # fire on a skipped day, and it must not be starved by the early returns.
+        await maybe_offer_week_cards(context, now)
     await resolve_yesterdays_knocks(context, now)
 
     # Admin-only heads-up (after the day's deadline) of what tomorrow's prompt
     # will be. Fires regardless of whether today ran or was skipped, so it also
     # confirms a queue that was refilled after an empty day.
-    if nowt >= t["preview"] and not (day and day["preview_sent_at"]):
+    if not paused and nowt >= t["preview"] and not (day and day["preview_sent_at"]):
         await send_preview(context, today)
         day = db.get_day(today)
 
     if day and day["skipped"]:
         return
 
-    if (day is None or not day["prompt_sent_at"]) and t["prompt"] <= nowt < t["deadline"]:
+    if (
+        not paused
+        and (day is None or not day["prompt_sent_at"])
+        and t["prompt"] <= nowt < t["deadline"]
+    ):
         await send_prompt(context, today)
         return
 
@@ -417,14 +441,20 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if (
-        not day["reminder_sent_at"]
+        not paused
+        and not day["reminder_sent_at"]
         and t["reminder"] <= nowt < t["deadline"]
     ):
         await send_reminders(context, today)
 
     deadline_dt = datetime.combine(now.date(), t["deadline"], tzinfo=config.TZ)
     final_at = deadline_dt - timedelta(minutes=t["final"])
-    if not day["final_reminder_sent_at"] and final_at <= now and nowt < t["deadline"]:
+    if (
+        not paused
+        and not day["final_reminder_sent_at"]
+        and final_at <= now
+        and nowt < t["deadline"]
+    ):
         await send_final_reminders(context, today)
 
     # The collage is never sent automatically: after the moderation message
@@ -721,6 +751,11 @@ async def run_proofing(
 
 
 async def send_prompt(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
+    # Belt and braces: /forceprompt must not accidentally pierce an
+    # intermission if a future caller forgets to perform its own check.
+    if is_paused():
+        log.info("prompt for %s not sent: bot is paused", date)
+        return
     prompt = db.pick_prompt()
     if prompt is None:
         db.set_day_field(date, "skipped", 1)
@@ -789,7 +824,11 @@ async def send_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) -> None:
     if prompt is None:
         return
     submitted = set(db.submitter_ids(date))
-    targets = [u for u in db.active_user_ids() if u not in submitted]
+    targets = [
+        u
+        for u in db.active_user_ids()
+        if u not in submitted and db.reminders_enabled(u)
+    ]
     if not targets:
         return
     await send_per_user(
@@ -815,7 +854,11 @@ async def send_final_reminders(context: ContextTypes.DEFAULT_TYPE, date: str) ->
     if prompt is None:
         return
     submitted = set(db.submitter_ids(date))
-    targets = [u for u in db.active_user_ids() if u not in submitted]
+    targets = [
+        u
+        for u in db.active_user_ids()
+        if u not in submitted and db.reminders_enabled(u)
+    ]
     if not targets:
         return
     minutes = int(db.get_setting("final_reminder_min"))
