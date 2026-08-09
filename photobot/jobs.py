@@ -43,8 +43,9 @@ def rating_keyboard(date: str) -> InlineKeyboardMarkup:
 # position in the mosaic.
 KNOCK_LABEL = "🚪 Knock, knock, who's there..."
 # Knocking stays open overnight and closes at noon the next day, when the tally
-# is read and one author is asked for the story.
+# is read and qualifying photos are offered to an admin for a story request.
 KNOCK_CLOSE_HOUR = 12
+STORY_KNOCK_THRESHOLD = 3
 
 
 def knock_open_for(date: str) -> bool:
@@ -310,7 +311,7 @@ async def request_story(
 ) -> tuple[int | None, str, str | None]:
     """Ask a photo's author for its story and remember the pending reply.
 
-    The request is shared by the admin command and the automatic knock result,
+    The request is shared by the admin command and the knock approval action,
     so both paths create exactly the same kind of pending story.
     """
     author_id = photo["tg_id"]
@@ -338,7 +339,11 @@ async def request_story(
 async def resolve_yesterdays_knocks(
     context: ContextTypes.DEFAULT_TYPE, now: datetime
 ) -> None:
-    """At noon, ask the sole knock winner; leave ties for an admin to choose."""
+    """At noon, offer each photo with enough knocks to an admin.
+
+    A knock result never messages an author by itself.  Totals below the
+    threshold are deliberately silent: they are not a story recommendation.
+    """
     if now.hour < KNOCK_CLOSE_HOUR:
         return
 
@@ -350,57 +355,33 @@ async def resolve_yesterdays_knocks(
     tally = db.knock_tally(date)
     if not tally:
         db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
-        await notify_admins(
-            context,
-            f"🚪 {date}: knock window closed — nobody knocked, so no story was requested.",
-        )
-        return
-
-    highest = tally[0]["n"]
-    leaders = [row for row in tally if row["n"] == highest]
-    if len(leaders) > 1:
-        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
-        await notify_admins(
-            context,
-            f"🚪 {date}: {len(leaders)} photos tied with {highest} knock(s). "
-            f"No story was requested — use /knocks {date} to choose one.",
-        )
-        return
-
-    winner_id = leaders[0]["target_id"]
-    # An admin might already have asked this author while the window was open.
-    existing = db.story_for_photo(date, winner_id)
-    if existing:
-        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
-        return
-
-    photo = db.get_photo(date, winner_id)
-    if photo is None:
-        db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
-        await notify_admins(
-            context,
-            f"🚪 {date}: the knock winner's photo is gone, so no story was requested.",
-        )
-        return
-
-    sid, name, error = await request_story(context, date, photo)
-    if error:
-        # A blocked author cannot be retried; transient delivery errors are left
-        # unresolved so the next minute can try again. Those failures are logged
-        # in request_story; only a final, actionable outcome reaches admins.
-        if "has blocked the bot" in error:
-            db.set_day_field(
-                date, "knock_resolved_at", now.isoformat(timespec="seconds")
-            )
-            await notify_admins(context, f"🚪 {date}: {error}")
         return
 
     db.set_day_field(date, "knock_resolved_at", now.isoformat(timespec="seconds"))
-    await notify_admins(
-        context,
-        f"🚪 {date}: {name} won with {highest} knock(s) and was asked for their story. "
-        f"Story #{sid} is waiting for a reply.",
-    )
+    for row in tally:
+        if row["n"] < STORY_KNOCK_THRESHOLD:
+            break
+        target_id = row["target_id"]
+        # An admin might already have asked this author while the window was open.
+        if db.story_for_photo(date, target_id):
+            continue
+        if db.get_photo(date, target_id) is None:
+            continue
+        user = db.get_user(target_id)
+        name = user["first_name"] if user else str(target_id)
+        keyboard = InlineKeyboardMarkup(
+            [[
+                InlineKeyboardButton(
+                    "💬 Ask for story", callback_data=f"ko:ask:{date}:{target_id}"
+                ),
+                InlineKeyboardButton("No thanks", callback_data=f"ko:no:{date}:{target_id}"),
+            ]]
+        )
+        await notify_admins(
+            context,
+            f"🚪 {date}: {name}'s photo got {row['n']} knock(s). Ask for their story?",
+            reply_markup=keyboard,
+        )
 
 
 async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -902,6 +902,38 @@ async def on_knock_pick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _send_story_ask(update, context, date, photo)
 
 
+@admin_only
+async def on_knock_story_offer(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Handle an admin's yes/no response to a threshold knock offer."""
+    query = update.callback_query
+    _, action, date, target = query.data.split(":")
+    target_id = int(target)
+
+    if action == "no":
+        await query.answer("No story request sent.")
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+    photo = db.get_photo(date, target_id)
+    if photo is None:
+        await query.answer("That photo is gone.")
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+    if db.story_for_photo(date, target_id):
+        await query.answer("A story was already requested.")
+        await query.edit_message_reply_markup(reply_markup=None)
+        return
+
+    await query.answer("Asking…")
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        log.debug("knock story offer keyboard clear failed for %s/%s", date, target_id)
+    await _send_story_ask(update, context, date, photo)
+
+
 async def _send_story_ask(
     update: Update, context: ContextTypes.DEFAULT_TYPE, date: str, photo
 ) -> None:

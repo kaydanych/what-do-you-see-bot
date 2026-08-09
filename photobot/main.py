@@ -156,6 +156,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("pending", adm.cmd_pending))
     app.add_handler(CallbackQueryHandler(adm.on_verify, pattern=r"^verify:"))
     app.add_handler(CallbackQueryHandler(adm.on_knock_pick, pattern=r"^kw:"))
+    app.add_handler(CallbackQueryHandler(adm.on_knock_story_offer, pattern=r"^ko:"))
     app.add_handler(CommandHandler("addprompt", adm.cmd_addprompt))
     app.add_handler(CommandHandler("setru", adm.cmd_setru))
     app.add_handler(CommandHandler("prompts", adm.cmd_prompts))
