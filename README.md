@@ -1,8 +1,8 @@
 <h1 align="center">📸 photobot</h1>
 
 <p align="center">
-  <b>One prompt a day. One photo each. One collage back.</b><br>
-  A quiet daily ritual for a closed circle of friends.
+  <b>Small photographic rituals for a closed circle.</b><br>
+  Daily collective collages and anonymous two-person visual correspondence.
 </p>
 
 <p align="center">
@@ -51,6 +51,45 @@ who played**. Next morning, a new prompt.
 
 No feed, no likes, no strangers. Just a reason to look a little closer at an
 ordinary day, and the small pleasure of seeing what nine other people found.
+
+## Season 2: Second Look
+
+The daily collage can be put into a manual intermission with `/pause` while a
+separate two-week season runs. Everyone who opts in is paired randomly and
+anonymously. Every pair starts from the same bilingual prompt, but then builds
+its own private chain of ten photographs:
+
+- one randomly chosen partner starts;
+- each photograph is re-encoded without a name, username, filename or Telegram
+  forwarding attribution;
+- after receiving a photograph, a participant may prepare their reply at once,
+  but it is delivered only six hours later. They may replace it freely before
+  that moment; the partner sees only the final version;
+- an unanswered turn gets a gentle nudge after 24 hours and another after 48;
+- ten photographs complete the chain; the season closes after two weeks even
+  if a chain is shorter;
+- either participant can leave quietly or report. A report freezes the chain,
+  alerts the admin, and prevents those two accounts from ever being paired
+  again.
+
+Enrollment opens Friday, with reminders only to undecided people on Saturday
+and Sunday. Pairing happens Monday at 09:00 Berlin time. People can change their
+yes/no answer until pairing, which also lets an admin account fix an odd pool.
+
+For an accelerated two-account rehearsal on a private test bot:
+
+```text
+/seasontest Follow something blue | Иди за чем-то синим
+# tap "I'm in" from both accounts
+/seasonpair
+```
+
+The rehearsal uses the production flow with a four-photo target and one-minute
+reply delay. `/seasonstatus` shows the pool, chains and link count;
+`/seasoncancel yes` closes it. A real season is scheduled with
+`/seasoncreate <Monday YYYY-MM-DD>`. The shared opening prompt can be supplied
+there or finalized later with `/seasonprompt <EN prompt> | <RU prompt>` before
+Monday pairing.
 
 ## A day in the life
 
@@ -163,6 +202,8 @@ Tests: `.venv/bin/python -m pytest tests/`
 | `/settimes` · `/times` | move the day's clock |
 | `/stats` · `/users` · `/feedback_all` | who's playing, what they think |
 | `/weekcard` · `/weekcards` | Sunday's week cards — who qualifies, what they chose |
+| `/seasoncreate` · `/seasonprompt` · `/seasonstatus` | schedule, set the opening prompt, and inspect a correspondence season |
+| `/seasontest` · `/seasonpair` · `/seasoncancel yes` | rehearse, pair immediately, or close a season |
 | `/errors` · `/version` | last log lines, which build is running |
 
 Every crash is DM'd to the admins with a traceback, and a tick job every minute

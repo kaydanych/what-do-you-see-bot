@@ -1,7 +1,7 @@
 # Photobot — Daily Photo Prompt & Collage Bot
 
 **Status:** implemented and deployed; actively developed (see README.md)
-**Updated:** 2026-08-01
+**Updated:** 2026-08-13
 
 ## 1. Concept
 
@@ -147,6 +147,59 @@ photo?") which is forwarded to the admin as-is.
 Everything runs on the same one-minute tick, so a NAS reboot mid-evening
 catches up, and every knob (`batch`, `round`, `quorum`, on/off) lives in the DB
 and is changed from the admin chat via `/proofing`.
+
+## 4b. Season 2 — anonymous visual correspondence
+
+Season 2 is an independent lifecycle, not another daily-collage mode. The old
+loop may remain manually paused while correspondence enrollment, pairing,
+delivery and reminders continue through the same one-minute scheduler.
+
+**Commitment and enrollment.** A production season is scheduled from its Monday
+start date. Enrollment opens the preceding Friday at 09:00; only people who
+have not answered get reminders Saturday and Sunday at noon. A yes/no choice
+may be changed until pairing. On Monday at 09:00 the bot randomly pairs all
+opted-in accounts. If the pool is odd, the season waits and alerts the admin;
+an admin account may join or withdraw and pairing starts as soon as the count is
+even.
+
+**One chain per pair.** All pairs receive the same bilingual opening prompt.
+One member is chosen randomly to begin. The pair then alternates photographs
+until it reaches exactly ten links or the two-week window ends. After the first
+photo, the prompt no longer drives the exchange: every new image responds to
+the image immediately before it.
+
+**Pacing.** A received photograph starts a six-hour private reply window. The
+recipient may submit immediately, but that image remains an explicit draft:
+the bot states exactly when it will be sent, and any newer photograph replaces
+it until that moment. The partner sees only the final version, delivered when
+the six hours expire. If no draft exists when the window opens, the bot says
+the turn is ready. This permits irregular rhythm while preventing a pair from
+racing through the season in one sitting. An unanswered turn is nudged at 24
+hours and again at 48 hours, with an admin alert at 48 hours. A slow turn is not
+an automatic exit.
+
+**Anonymity and safety.** Photos are uploaded by the bot as new files: there is
+no Telegram forward attribution, name, username or source filename. The bot
+never reveals pair identities to participants, including after completion.
+Every chain message carries an end/report control. Leaving ends the chain and
+tells the partner only that it stopped. Reporting freezes it, records the most
+recent link for admin review, permanently blocks that account pair from future
+matching, and optionally captures a private report note. Kicking an account
+also ends its active chain and informs only the anonymous partner.
+
+**Durability.** Seasons, enrollments, pairs, turn ownership, reminders, blocks
+and individual links are stored in SQLite; normalized chain photos live below
+`data/photos/correspondence/s<season>/p<pair>/`. Turn advancement and link
+insertion are one SQLite transaction, so two near-simultaneous uploads cannot
+both claim the same position.
+
+**Rehearsal.** `/seasontest <EN> | <RU>` opens the real enrollment flow with a
+four-photo target and one-minute lock. After two test accounts opt in,
+`/seasonpair` starts immediately. `/seasonstatus` exposes state and
+`/seasoncancel yes` provides a deliberate cleanup path before scheduling
+production with `/seasoncreate`. Production enrollment does not expose or
+require the opening prompt: it can be finalized during the weekend with
+`/seasonprompt <EN> | <RU>`, but pairing refuses to start while it is empty.
 
 ## 5. Users & onboarding
 

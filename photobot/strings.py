@@ -235,6 +235,73 @@ STRINGS = {
         "APPROVED": "✅ Тебя впустили — добро пожаловать!",
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
+        # --- Season 2: anonymous visual correspondence ---
+        "CORR_ENROLL_OPEN": (
+            "📮 Новый сезон: визуальная переписка\n\n"
+            "На две недели я случайно соединю тебя с одним человеком. "
+            "Имён и ников не будет: пара останется полностью анонимной.\n\n"
+            "В понедельник все пары получат одну и ту же точку старта.\n\n"
+            "Вы будете по очереди отвечать фотографией на предыдущую. "
+            "Ответ можно прислать сразу, но напарник получит его через 6 часов. "
+            "До отправки фотографию можно менять. "
+            "Цель — цепочка из 10 фото. Если ответа нет сутки или двое, я напомню.\n\n"
+            "Участвуй, только если готов постараться довести цепочку до конца. "
+            "Выйти или пожаловаться можно в любой момент."
+        ),
+        "CORR_ENROLL_REMINDER": (
+            "📮 Ещё не вижу твоего решения о двухнедельной анонимной "
+            "фотопереписке. Ответь до утра понедельника — да или нет одинаково помогут."
+        ),
+        "CORR_ENROLL_CLOSED": "Запись на этот сезон уже закрыта.",
+        "CORR_JOINED": "Ты в игре 📮 В понедельник я соберу пары.",
+        "CORR_DECLINED": "Понял — пропускаешь этот сезон.",
+        "CORR_STARTER": (
+            "📮 Пара собрана. Вы не узнаете имён друг друга — только фотографии.\n\n"
+            "Ваша точка старта:\n«{prompt}»\n\n"
+            "Твой ход первый. Пришли одну фотографию; затем цепочка пойдёт по очереди до {target} фото."
+        ),
+        "CORR_WAITER": (
+            "📮 Пара собрана. Вы не узнаете имён друг друга — только фотографии.\n\n"
+            "Ваша точка старта:\n«{prompt}»\n\n"
+            "Первый ход у твоего неизвестного партнёра. Фото придёт сюда сразу, как только оно будет готово. "
+            "Цель — {target} фото."
+        ),
+        "CORR_ALREADY_COMPLETE": "Ваша цепочка уже завершена ✅",
+        "CORR_NO_LONGER_ACTIVE": "Эта фотопереписка больше не активна.",
+        "CORR_NOT_YOUR_TURN": "Сейчас ход партнёра — подожди его фото 📮",
+        "CORR_TOO_SOON": "Фото уже готово, но ход откроется через {remaining}.",
+        "CORR_DRAFT_SAVED": (
+            "Фото принято, но я ещё НЕ отправил его напарнику.\n\n"
+            "Отправлю автоматически через {remaining} — в {time} по Берлину.\n\n"
+            "До этого времени можешь прислать другую фотографию: она заменит эту, "
+            "и напарник увидит только последнюю версию."
+        ),
+        "CORR_DRAFT_REPLACED": (
+            "Фотографию заменил. Напарнику пока ничего не отправлено.\n\n"
+            "Последнюю версию отправлю через {remaining} — в {time} по Берлину. "
+            "До этого момента можно заменить её ещё раз."
+        ),
+        "CORR_TURN_CHANGED": "Ход уже изменился — это фото не добавилось. Проверь переписку.",
+        "CORR_RECEIVED": (
+            "📮 Фото {position} из {target} в вашей цепочке.\n\n"
+            "Теперь твой ход. Можешь прислать ответ сразу: я сохраню его как черновик "
+            "и отправлю напарнику через {wait}. До отправки фотографию можно заменить."
+        ),
+        "CORR_RECEIVED_FINAL": "📮 Фото {position} из {target} — ваша цепочка завершена ✅",
+        "CORR_DELIVERY_FAILED": "Не смог доставить фото. Цепочка остановлена, организатор получил сообщение.",
+        "CORR_SENT": "Фото {position} из {target} доставлено ✅ Теперь ход партнёра.",
+        "CORR_SENT_FINAL": "Фото {position} из {target} доставлено. Цепочка завершена ✅",
+        "CORR_NOT_YOURS": "Эта кнопка не от твоей переписки.",
+        "CORR_LEFT": "Переписка завершена. Партнёр увидит только, что цепочка остановлена.",
+        "CORR_REPORTED": "Жалоба отправлена. Цепочка заморожена.",
+        "CORR_REPORT_NOTE": "Если хочешь, напиши следующим сообщением, что случилось. Это увидит только организатор; можно не отвечать.",
+        "CORR_REPORT_THANKS": "Спасибо, передал организатору.",
+        "CORR_PARTNER_ENDED": "Эта цепочка завершена досрочно. Тебе ничего делать не нужно.",
+        "CORR_SEASON_CLOSED": "📮 Две недели прошли — сезон фотопереписок закрыт. Спасибо за цепочку.",
+        "CORR_SEASON_CANCELLED": "📮 Эта фотопереписка закрыта организатором.",
+        "CORR_TURN_READY": "📸 Шесть часов прошло — теперь можно ответить своей фотографией.",
+        "CORR_REMINDER_24": "📮 Твой ход ждёт уже сутки. Не нужно идеального ответа — просто продолжи линию одной фотографией.",
+        "CORR_REMINDER_48": "⏳ Цепочка ждёт твоего ответа уже двое суток. Пришли фото, когда сможешь; если не можешь продолжать, заверши цепочку кнопкой ниже.",
         "HELP": (
             "Как это работает:\n"
             "• каждое утро в {prompt_time} приходит задание\n"
@@ -475,6 +542,76 @@ STRINGS = {
         "APPROVED": "✅ You're in — welcome!",
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
+        # --- Season 2: anonymous visual correspondence ---
+        "CORR_ENROLL_OPEN": (
+            "📮 New season: visual correspondence\n\n"
+            "For two weeks, I'll randomly connect you with one other person. No names or "
+            "usernames: the pair stays completely anonymous.\n\n"
+            "On Monday, every pair will receive the same starting point.\n\n"
+            "You take turns answering the previous photograph with another photograph. "
+            "You may submit a reply immediately, but your partner receives it 6 hours "
+            "later; you may replace it until delivery. The goal is one chain of 10 "
+            "photographs. If a turn waits for "
+            "a day or two, I'll send a reminder.\n\n"
+            "Join only if you can make a real attempt to carry the chain to its end. You "
+            "can still leave or report at any moment."
+        ),
+        "CORR_ENROLL_REMINDER": (
+            "📮 I still don't have your decision about the two-week anonymous photo "
+            "correspondence. Please answer by Monday morning — yes and no are equally helpful."
+        ),
+        "CORR_ENROLL_CLOSED": "Enrollment for this season is already closed.",
+        "CORR_JOINED": "You're in 📮 I'll form the pairs on Monday.",
+        "CORR_DECLINED": "Got it — you're sitting this season out.",
+        "CORR_STARTER": (
+            "📮 Your pair is ready. You will never see each other's names — only photographs.\n\n"
+            "Your starting point:\n“{prompt}”\n\n"
+            "You have the first turn. Send one photograph; after that, the chain alternates "
+            "until it reaches {target} images."
+        ),
+        "CORR_WAITER": (
+            "📮 Your pair is ready. You will never see each other's names — only photographs.\n\n"
+            "Your starting point:\n“{prompt}”\n\n"
+            "Your unknown partner has the first turn. Their photograph will arrive here "
+            "as soon as it is ready. The goal is {target} images."
+        ),
+        "CORR_ALREADY_COMPLETE": "Your chain is already complete ✅",
+        "CORR_NO_LONGER_ACTIVE": "This photo correspondence is no longer active.",
+        "CORR_NOT_YOUR_TURN": "It's your partner's turn now — wait for their photograph 📮",
+        "CORR_TOO_SOON": "Your photo is ready, but this turn opens in {remaining}.",
+        "CORR_DRAFT_SAVED": (
+            "Photo accepted, but I have NOT sent it to your partner yet.\n\n"
+            "I will send it automatically in {remaining}, at {time} Berlin time.\n\n"
+            "Until then, you can send another photograph to replace it. Your partner "
+            "will see only the latest version."
+        ),
+        "CORR_DRAFT_REPLACED": (
+            "Photograph replaced. Nothing has been sent to your partner yet.\n\n"
+            "I will send the latest version in {remaining}, at {time} Berlin time. "
+            "You can replace it again until then."
+        ),
+        "CORR_TURN_CHANGED": "The turn changed already, so this photo was not added. Check the correspondence.",
+        "CORR_RECEIVED": (
+            "📮 Photograph {position} of {target} in your chain.\n\n"
+            "It's your turn now. You may send your answer immediately: I will keep it as "
+            "a draft and deliver it to your partner in {wait}. You may replace the photo "
+            "until delivery."
+        ),
+        "CORR_RECEIVED_FINAL": "📮 Photograph {position} of {target} — your chain is complete ✅",
+        "CORR_DELIVERY_FAILED": "I couldn't deliver the photograph. The chain is paused and the organizer has been told.",
+        "CORR_SENT": "Photograph {position} of {target} delivered ✅ Now it's your partner's turn.",
+        "CORR_SENT_FINAL": "Photograph {position} of {target} delivered. The chain is complete ✅",
+        "CORR_NOT_YOURS": "That button does not belong to your correspondence.",
+        "CORR_LEFT": "The correspondence has ended. Your partner will only be told that the chain stopped.",
+        "CORR_REPORTED": "Report sent. The chain is frozen.",
+        "CORR_REPORT_NOTE": "If you want, send one more message explaining what happened. Only the organizer will see it; you can also ignore this.",
+        "CORR_REPORT_THANKS": "Thank you. I've passed it to the organizer.",
+        "CORR_PARTNER_ENDED": "This chain has ended early. There is nothing you need to do.",
+        "CORR_SEASON_CLOSED": "📮 The two weeks are over and the correspondence season is closed. Thank you for your chain.",
+        "CORR_SEASON_CANCELLED": "📮 This photo correspondence was closed by the organizer.",
+        "CORR_TURN_READY": "📸 Six hours have passed — you can now answer with your photograph.",
+        "CORR_REMINDER_24": "📮 Your turn has been waiting for a day. It doesn't need to be a perfect answer — just continue the line with one photograph.",
+        "CORR_REMINDER_48": "⏳ The chain has been waiting for your answer for two days. Send a photo when you can; if you cannot continue, use the button below to end the chain.",
         "HELP": (
             "How it works:\n"
             "• every morning at {prompt_time} a challenge arrives\n"

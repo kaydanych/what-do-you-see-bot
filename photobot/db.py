@@ -189,6 +189,83 @@ CREATE TABLE IF NOT EXISTS week_card_messages (
     message_id INTEGER NOT NULL,
     PRIMARY KEY (week_end, card_tg_id, tg_id)
 );
+-- Season 2: one shared prompt starts an anonymous two-person chain. Seasons
+-- own their clock and target so production and accelerated test rehearsals use
+-- exactly the same engine.
+CREATE TABLE IF NOT EXISTS correspondence_seasons (
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name                  TEXT NOT NULL,
+    prompt                TEXT NOT NULL,
+    prompt_ru             TEXT,
+    status                TEXT NOT NULL DEFAULT 'scheduled',
+    enrollment_opens_at   TEXT NOT NULL,
+    enrollment_reminder1_at TEXT NOT NULL,
+    enrollment_reminder2_at TEXT NOT NULL,
+    starts_at             TEXT NOT NULL,
+    ends_at               TEXT NOT NULL,
+    target_links          INTEGER NOT NULL DEFAULT 10,
+    cooldown_minutes      INTEGER NOT NULL DEFAULT 360,
+    enrollment_opened_at  TEXT,
+    reminder1_sent_at     TEXT,
+    reminder2_sent_at     TEXT,
+    paired_at             TEXT,
+    closed_at             TEXT,
+    is_test               INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS correspondence_enrollments (
+    season_id  INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    decision   TEXT NOT NULL,             -- in | out
+    decided_at TEXT NOT NULL,
+    PRIMARY KEY (season_id, tg_id)
+);
+CREATE TABLE IF NOT EXISTS correspondence_pairs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    season_id         INTEGER NOT NULL,
+    user_a            INTEGER NOT NULL,
+    user_b            INTEGER NOT NULL,
+    next_tg_id        INTEGER NOT NULL,
+    status            TEXT NOT NULL DEFAULT 'active', -- active|complete|ended|reported
+    turn_started_at   TEXT NOT NULL,
+    ready_notified_at TEXT,
+    reminder24_at     TEXT,
+    reminder48_at     TEXT,
+    ended_reason      TEXT,
+    reported_by       INTEGER,
+    reported_link_id  INTEGER,
+    created_at        TEXT NOT NULL,
+    completed_at      TEXT
+);
+CREATE TABLE IF NOT EXISTS correspondence_links (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    pair_id      INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+    sender_id    INTEGER NOT NULL,
+    file_path    TEXT NOT NULL,
+    file_id      TEXT,
+    submitted_at TEXT NOT NULL,
+    UNIQUE(pair_id, position)
+);
+-- A reply may be prepared during the cooldown. It stays private and can be
+-- replaced until deliver_at; the scheduler claims and sends only the latest
+-- version. One pair can have only one pending next link.
+CREATE TABLE IF NOT EXISTS correspondence_drafts (
+    pair_id      INTEGER PRIMARY KEY,
+    sender_id    INTEGER NOT NULL,
+    position     INTEGER NOT NULL,
+    file_path    TEXT NOT NULL,
+    submitted_at TEXT NOT NULL,
+    deliver_at   TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'pending' -- pending | delivering
+);
+-- A report permanently prevents the same two accounts being paired again.
+CREATE TABLE IF NOT EXISTS correspondence_blocks (
+    user_low   INTEGER NOT NULL,
+    user_high  INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    reason     TEXT,
+    PRIMARY KEY (user_low, user_high)
+);
 """
 
 
@@ -1249,3 +1326,304 @@ def week_card_messages_for(week_end: str, card_tg_id: int) -> list[sqlite3.Row]:
         "WHERE week_end=? AND card_tg_id=?",
         (week_end, card_tg_id),
     ).fetchall()
+
+
+# --- anonymous visual correspondence seasons --------------------------------
+
+_CORR_SEASON_FIELDS = {
+    "status", "enrollment_opened_at", "reminder1_sent_at", "reminder2_sent_at",
+    "paired_at", "closed_at", "starts_at", "ends_at", "prompt", "prompt_ru",
+}
+_CORR_PAIR_FIELDS = {
+    "status", "next_tg_id", "turn_started_at", "ready_notified_at",
+    "reminder24_at", "reminder48_at", "ended_reason", "reported_by",
+    "reported_link_id", "completed_at",
+}
+
+
+def create_correspondence_season(
+    *,
+    name: str,
+    prompt: str,
+    prompt_ru: str | None,
+    enrollment_opens_at: str,
+    enrollment_reminder1_at: str,
+    enrollment_reminder2_at: str,
+    starts_at: str,
+    ends_at: str,
+    target_links: int = 10,
+    cooldown_minutes: int = 360,
+    is_test: bool = False,
+) -> int:
+    return _exec(
+        "INSERT INTO correspondence_seasons("
+        "name, prompt, prompt_ru, enrollment_opens_at, enrollment_reminder1_at, "
+        "enrollment_reminder2_at, starts_at, ends_at, target_links, "
+        "cooldown_minutes, is_test) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            name, prompt, prompt_ru, enrollment_opens_at,
+            enrollment_reminder1_at, enrollment_reminder2_at, starts_at, ends_at,
+            target_links, cooldown_minutes, int(is_test),
+        ),
+    ).lastrowid
+
+
+def get_correspondence_season(season_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_seasons WHERE id=?", (season_id,)
+    ).fetchone()
+
+
+def current_correspondence_season() -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_seasons WHERE status<>'closed' "
+        "ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+
+def latest_correspondence_season() -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_seasons ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+
+def set_correspondence_season_field(season_id: int, field: str, value) -> None:
+    if field not in _CORR_SEASON_FIELDS:
+        raise ValueError(f"unsupported correspondence season field: {field}")
+    _exec(f"UPDATE correspondence_seasons SET {field}=? WHERE id=?", (value, season_id))
+
+
+def set_correspondence_enrollment(season_id: int, tg_id: int, decision: str) -> None:
+    if decision not in {"in", "out"}:
+        raise ValueError("decision must be in or out")
+    _exec(
+        "INSERT INTO correspondence_enrollments(season_id, tg_id, decision, decided_at) "
+        "VALUES(?, ?, ?, ?) ON CONFLICT(season_id, tg_id) DO UPDATE SET "
+        "decision=excluded.decision, decided_at=excluded.decided_at",
+        (season_id, tg_id, decision, _now()),
+    )
+
+
+def correspondence_enrollment(season_id: int, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_enrollments WHERE season_id=? AND tg_id=?",
+        (season_id, tg_id),
+    ).fetchone()
+
+
+def correspondence_enrollees(season_id: int, decision: str = "in") -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM correspondence_enrollments "
+        "WHERE season_id=? AND decision=? ORDER BY decided_at, tg_id",
+        (season_id, decision),
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def correspondence_undecided(season_id: int) -> list[int]:
+    rows = _exec(
+        "SELECT u.tg_id FROM users u LEFT JOIN correspondence_enrollments e "
+        "ON e.season_id=? AND e.tg_id=u.tg_id "
+        "WHERE u.status='active' AND e.tg_id IS NULL ORDER BY u.tg_id",
+        (season_id,),
+    ).fetchall()
+    return [r["tg_id"] for r in rows]
+
+
+def create_correspondence_pair(
+    season_id: int, user_a: int, user_b: int, starter: int, started_at: str
+) -> int:
+    return _exec(
+        "INSERT INTO correspondence_pairs("
+        "season_id, user_a, user_b, next_tg_id, turn_started_at, "
+        "ready_notified_at, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (season_id, user_a, user_b, starter, started_at, started_at, _now()),
+    ).lastrowid
+
+
+def get_correspondence_pair(pair_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_pairs WHERE id=?", (pair_id,)
+    ).fetchone()
+
+
+def correspondence_pairs_for(season_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM correspondence_pairs WHERE season_id=? ORDER BY id",
+        (season_id,),
+    ).fetchall()
+
+
+def correspondence_pair_for_user(
+    season_id: int, tg_id: int
+) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_pairs WHERE season_id=? "
+        "AND (user_a=? OR user_b=?) ORDER BY id LIMIT 1",
+        (season_id, tg_id, tg_id),
+    ).fetchone()
+
+
+def set_correspondence_pair_field(pair_id: int, field: str, value) -> None:
+    if field not in _CORR_PAIR_FIELDS:
+        raise ValueError(f"unsupported correspondence pair field: {field}")
+    _exec(f"UPDATE correspondence_pairs SET {field}=? WHERE id=?", (value, pair_id))
+
+
+def correspondence_links(pair_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM correspondence_links WHERE pair_id=? ORDER BY position",
+        (pair_id,),
+    ).fetchall()
+
+
+def latest_correspondence_link(pair_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_links WHERE pair_id=? "
+        "ORDER BY position DESC LIMIT 1",
+        (pair_id,),
+    ).fetchone()
+
+
+def correspondence_draft(pair_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
+    ).fetchone()
+
+
+def upsert_correspondence_draft(
+    pair_id: int,
+    sender_id: int,
+    position: int,
+    file_path: str,
+    submitted_at: str,
+    deliver_at: str,
+) -> bool:
+    """Save/replace the next link while it is waiting for delivery.
+
+    Returns True when an existing pending draft was replaced. A draft already
+    claimed by the scheduler cannot be changed underneath an in-flight upload.
+    """
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        pair = _conn.execute(
+            "SELECT * FROM correspondence_pairs WHERE id=?", (pair_id,)
+        ).fetchone()
+        if pair is None or pair["status"] != "active":
+            raise ValueError("correspondence is not active")
+        if pair["next_tg_id"] != sender_id:
+            raise ValueError("not this user's turn")
+        expected = _conn.execute(
+            "SELECT COUNT(*) AS n FROM correspondence_links WHERE pair_id=?",
+            (pair_id,),
+        ).fetchone()["n"] + 1
+        if position != expected:
+            raise ValueError("draft position changed")
+        existing = _conn.execute(
+            "SELECT status FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
+        ).fetchone()
+        if existing is not None and existing["status"] != "pending":
+            raise ValueError("draft is already being delivered")
+        _conn.execute(
+            "INSERT INTO correspondence_drafts("
+            "pair_id, sender_id, position, file_path, submitted_at, deliver_at) "
+            "VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(pair_id) DO UPDATE SET "
+            "sender_id=excluded.sender_id, position=excluded.position, "
+            "file_path=excluded.file_path, submitted_at=excluded.submitted_at, "
+            "deliver_at=excluded.deliver_at, status='pending'",
+            (pair_id, sender_id, position, file_path, submitted_at, deliver_at),
+        )
+        return existing is not None
+
+
+def claim_due_correspondence_draft(
+    pair_id: int, now: str
+) -> sqlite3.Row | None:
+    """Atomically reserve a due draft for one delivery attempt."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        cur = _conn.execute(
+            "UPDATE correspondence_drafts SET status='delivering' "
+            "WHERE pair_id=? AND status='pending' AND deliver_at<=?",
+            (pair_id, now),
+        )
+        if cur.rowcount == 0:
+            return None
+        return _conn.execute(
+            "SELECT * FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
+        ).fetchone()
+
+
+def add_correspondence_link(
+    pair_id: int, sender_id: int, file_path: str, submitted_at: str, target: int
+) -> sqlite3.Row:
+    """Append one link and atomically pass the baton to the other account."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        pair = _conn.execute(
+            "SELECT * FROM correspondence_pairs WHERE id=?", (pair_id,)
+        ).fetchone()
+        if pair is None or pair["status"] != "active":
+            raise ValueError("correspondence is not active")
+        if pair["next_tg_id"] != sender_id:
+            raise ValueError("not this user's turn")
+        pos = _conn.execute(
+            "SELECT COUNT(*) AS n FROM correspondence_links WHERE pair_id=?",
+            (pair_id,),
+        ).fetchone()["n"] + 1
+        if pos > target:
+            raise ValueError("correspondence is already complete")
+        cur = _conn.execute(
+            "INSERT INTO correspondence_links("
+            "pair_id, position, sender_id, file_path, submitted_at) "
+            "VALUES(?, ?, ?, ?, ?)",
+            (pair_id, pos, sender_id, file_path, submitted_at),
+        )
+        if pos == target:
+            _conn.execute(
+                "UPDATE correspondence_pairs SET status='complete', completed_at=? "
+                "WHERE id=?", (submitted_at, pair_id)
+            )
+        else:
+            other = pair["user_b"] if sender_id == pair["user_a"] else pair["user_a"]
+            _conn.execute(
+                "UPDATE correspondence_pairs SET next_tg_id=?, turn_started_at=?, "
+                "ready_notified_at=NULL, reminder24_at=NULL, reminder48_at=NULL "
+                "WHERE id=?",
+                (other, submitted_at, pair_id),
+            )
+        _conn.execute("DELETE FROM correspondence_drafts WHERE pair_id=?", (pair_id,))
+        return _conn.execute(
+            "SELECT * FROM correspondence_links WHERE id=?", (cur.lastrowid,)
+        ).fetchone()
+
+
+def set_correspondence_link_file_id(link_id: int, file_id: str) -> None:
+    _exec("UPDATE correspondence_links SET file_id=? WHERE id=?", (file_id, link_id))
+
+
+def block_correspondence_pair(user_a: int, user_b: int, reason: str) -> None:
+    low, high = sorted((user_a, user_b))
+    _exec(
+        "INSERT INTO correspondence_blocks(user_low, user_high, created_at, reason) "
+        "VALUES(?, ?, ?, ?) ON CONFLICT(user_low, user_high) DO NOTHING",
+        (low, high, _now(), reason),
+    )
+
+
+def correspondence_blocked_pairs() -> set[tuple[int, int]]:
+    rows = _exec("SELECT user_low, user_high FROM correspondence_blocks").fetchall()
+    return {(r["user_low"], r["user_high"]) for r in rows}
+
+
+def end_correspondence_pairs_for_user(tg_id: int, reason: str = "admin") -> list[int]:
+    rows = _exec(
+        "SELECT id FROM correspondence_pairs WHERE status='active' "
+        "AND (user_a=? OR user_b=?)", (tg_id, tg_id)
+    ).fetchall()
+    for row in rows:
+        _exec(
+            "UPDATE correspondence_pairs SET status='ended', ended_reason=? "
+            "WHERE id=?", (reason, row["id"])
+        )
+    return [r["id"] for r in rows]

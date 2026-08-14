@@ -52,8 +52,12 @@ def test_stories_lists_waiting_and_answered_requests_only():
 def test_three_knocks_offer_an_admin_choice_without_asking_automatically(monkeypatch):
     date = "2026-08-01"
     db.upsert_user(41, "Winning Wendy", "wendy")
-    for uid, name in ((42, "Knocker Kim", "kim"), (43, "Knocker Sam", "sam"), (44, "Knocker Pat", "pat")):
-        db.upsert_user(uid, name, name.lower())
+    for uid, name, username in (
+        (42, "Knocker Kim", "kim"),
+        (43, "Knocker Sam", "sam"),
+        (44, "Knocker Pat", "pat"),
+    ):
+        db.upsert_user(uid, name, username)
     db.ensure_day(date)
     db.set_day_field(date, "collage_sent_at", "2026-08-01T21:00:00")
     db.upsert_photo(date, 41, "/tmp/wendy.jpg")

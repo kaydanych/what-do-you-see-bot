@@ -4,7 +4,7 @@ import io
 import logging
 import random
 from datetime import date as date_cls
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 
 from telegram import (
     InlineKeyboardButton,
@@ -15,7 +15,7 @@ from telegram import (
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import config, db, handlers_user as usr, jobs, version
+from . import config, correspondence, db, handlers_user as usr, jobs, version
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,12 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /times
 /settimes key=value …
 /pause  /resume  /forceprompt  /skipday
+
+📮 Correspondence season
+/seasoncreate <Monday YYYY-MM-DD> [EN | RU]
+/seasonprompt <EN> | <RU>
+/seasontest <EN> | <RU>
+/seasonstatus  /seasonpair  /seasoncancel yes
 
 🖼 Collage
 /preview
@@ -143,6 +149,179 @@ async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(
         f"🏷 {version.describe(info)}\ndeployed {info.get('deployed_at', '?')}"
     )
+
+
+def _correspondence_prompt(args: list[str]) -> tuple[str, str | None] | None:
+    raw = " ".join(args).strip()
+    if not raw:
+        return None
+    en, ru = parse_prompt_line(raw)
+    return (en, ru) if en else None
+
+
+@admin_only
+async def cmd_seasoncreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Schedule Friday enrollment and a Monday-to-Monday fortnight."""
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /seasoncreate <Monday YYYY-MM-DD> [EN prompt | RU prompt]"
+        )
+        return
+    if db.current_correspondence_season() is not None:
+        await update.message.reply_text(
+            "A correspondence season is already open. Check /seasonstatus or "
+            "close it with /seasoncancel yes."
+        )
+        return
+    try:
+        start_date = date_cls.fromisoformat(context.args[0])
+    except ValueError:
+        await update.message.reply_text("The start date must be YYYY-MM-DD.")
+        return
+    if start_date.weekday() != 0:
+        await update.message.reply_text("That date is not a Monday.")
+        return
+    start = datetime.combine(start_date, time(9, 0), tzinfo=config.TZ)
+    if start <= jobs.now_local():
+        await update.message.reply_text("The Monday start must be in the future.")
+        return
+    parsed = _correspondence_prompt(context.args[1:])
+    prompt, prompt_ru = parsed if parsed is not None else ("", None)
+    opens = start - timedelta(days=3)
+    reminder1 = datetime.combine(
+        start_date - timedelta(days=2), time(12, 0), tzinfo=config.TZ
+    )
+    reminder2 = datetime.combine(
+        start_date - timedelta(days=1), time(12, 0), tzinfo=config.TZ
+    )
+    season_id = db.create_correspondence_season(
+        name="Second Look",
+        prompt=prompt,
+        prompt_ru=prompt_ru,
+        enrollment_opens_at=opens.isoformat(timespec="seconds"),
+        enrollment_reminder1_at=reminder1.isoformat(timespec="seconds"),
+        enrollment_reminder2_at=reminder2.isoformat(timespec="seconds"),
+        starts_at=start.isoformat(timespec="seconds"),
+        ends_at=(start + timedelta(days=14)).isoformat(timespec="seconds"),
+        target_links=10,
+        cooldown_minutes=360,
+    )
+    await update.message.reply_text(
+        f"📮 Scheduled Season #{season_id} · Second Look\n"
+        f"Enrollment: Fri {opens:%Y-%m-%d %H:%M}\n"
+        f"Undecided reminders: Sat/Sun 12:00\n"
+        f"Pairing: Mon {start:%Y-%m-%d %H:%M}\n"
+        f"Ends: {(start + timedelta(days=14)):%Y-%m-%d %H:%M}\n"
+        "10 photos per chain · 6-hour delayed delivery\n"
+        + (
+            "Prompt is set."
+            if prompt
+            else "Prompt is still open — set it before Monday with /seasonprompt."
+        )
+    )
+
+
+@admin_only
+async def cmd_seasonprompt(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No open correspondence season.")
+        return
+    if season["status"] == "active":
+        await update.message.reply_text("This season has already started.")
+        return
+    parsed = _correspondence_prompt(context.args)
+    if parsed is None:
+        await update.message.reply_text("Usage: /seasonprompt <EN prompt> | <RU prompt>")
+        return
+    prompt, prompt_ru = parsed
+    db.set_correspondence_season_field(season["id"], "prompt", prompt)
+    db.set_correspondence_season_field(season["id"], "prompt_ru", prompt_ru)
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} prompt set.\nEN: {prompt}"
+        + (f"\nRU: {prompt_ru}" if prompt_ru else "\nRU: English fallback")
+    )
+
+
+@admin_only
+async def cmd_seasontest(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Open a short rehearsal using the real enrollment and relay flow."""
+    if db.current_correspondence_season() is not None:
+        await update.message.reply_text(
+            "A correspondence season is already open. Use /seasoncancel yes first."
+        )
+        return
+    parsed = _correspondence_prompt(context.args)
+    if parsed is None:
+        await update.message.reply_text("Usage: /seasontest <EN prompt> | <RU prompt>")
+        return
+    prompt, prompt_ru = parsed
+    now = jobs.now_local()
+    season_id = db.create_correspondence_season(
+        name="Second Look rehearsal",
+        prompt=prompt,
+        prompt_ru=prompt_ru,
+        enrollment_opens_at=now.isoformat(timespec="seconds"),
+        enrollment_reminder1_at=(now + timedelta(hours=1)).isoformat(timespec="seconds"),
+        enrollment_reminder2_at=(now + timedelta(hours=2)).isoformat(timespec="seconds"),
+        starts_at=(now + timedelta(hours=3)).isoformat(timespec="seconds"),
+        ends_at=(now + timedelta(hours=6)).isoformat(timespec="seconds"),
+        target_links=4,
+        cooldown_minutes=1,
+        is_test=True,
+    )
+    season = db.get_correspondence_season(season_id)
+    await correspondence.open_enrollment(context, season, now)
+    await update.message.reply_text(
+        f"🧪 Test season #{season_id} is open to all active users. "
+        "Join from both test accounts, then run /seasonpair.\n"
+        "Target: 4 photos · reply lock: 1 minute · automatic close: 6 hours."
+    )
+
+
+@admin_only
+async def cmd_seasonstatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    await update.message.reply_text(correspondence.status_text(season))
+
+
+@admin_only
+async def cmd_seasonpair(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No open correspondence season.")
+        return
+    result = await correspondence.pair_and_start(context, season["id"])
+    await update.message.reply_text(f"📮 {result}")
+
+
+@admin_only
+async def cmd_seasoncancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.args != ["yes"]:
+        await update.message.reply_text(
+            "This closes the current season and all active chains. Confirm with "
+            "/seasoncancel yes"
+        )
+        return
+    season = db.current_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No open correspondence season.")
+        return
+    for pair in db.correspondence_pairs_for(season["id"]):
+        if pair["status"] == "active":
+            db.set_correspondence_pair_field(pair["id"], "status", "ended")
+            db.set_correspondence_pair_field(pair["id"], "ended_reason", "admin_cancelled")
+    db.set_correspondence_season_field(season["id"], "status", "closed")
+    db.set_correspondence_season_field(
+        season["id"], "closed_at", jobs.now_local().isoformat(timespec="seconds")
+    )
+    await correspondence.send_localized(
+        context, db.correspondence_enrollees(season["id"]), "CORR_SEASON_CANCELLED"
+    )
+    await update.message.reply_text(f"Closed correspondence season #{season['id']}.")
 
 
 @admin_only
@@ -1604,8 +1783,12 @@ async def cmd_kick(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if row is None:
         await update.message.reply_text("User not found.")
         return
+    ended = await correspondence.end_for_admin(context, row["tg_id"])
     db.set_user_status(row["tg_id"], "kicked")
-    await update.message.reply_text(f"Kicked {row['first_name']} (id {row['tg_id']}).")
+    tail = f" Ended chain(s): {', '.join(map(str, ended))}." if ended else ""
+    await update.message.reply_text(
+        f"Kicked {row['first_name']} (id {row['tg_id']}).{tail}"
+    )
 
 
 @admin_only

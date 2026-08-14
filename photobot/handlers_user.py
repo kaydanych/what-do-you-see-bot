@@ -11,7 +11,7 @@ from telegram import (
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
-from . import collage, config, db, jobs
+from . import collage, config, correspondence, db, jobs
 from .strings import CHOOSE_LANG, LANG_BUTTONS, STRINGS, t
 
 log = logging.getLogger(__name__)
@@ -683,6 +683,11 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Photo messages and image documents — the actual submissions."""
     if not await _register(update, context):
         return
+    # Correspondence is its own season and remains live while the old daily
+    # prompt game is paused. A participant's photo belongs to their active
+    # chain before we consider the legacy day.
+    if await correspondence.handle_photo(update, context):
+        return
     # Sending a photo cancels any pending /feedback or /suggest_prompt capture.
     context.user_data.pop("awaiting", None)
     msg = update.message
@@ -799,7 +804,11 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if awaiting and update.message.text:
         text = update.message.text.strip()
         if text:
-            if awaiting == "feedback":
+            if awaiting.startswith("corr_report:"):
+                await correspondence.capture_report_note(
+                    update, context, int(awaiting.split(":", 1)[1]), text
+                )
+            elif awaiting == "feedback":
                 await _store_feedback(update, context, text)
             elif awaiting.startswith("proofnote:"):
                 await _store_proof_note(

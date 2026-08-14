@@ -17,7 +17,15 @@ from telegram.ext import (
     filters,
 )
 
-from . import config, db, handlers_admin as adm, handlers_user as usr, jobs, version
+from . import (
+    config,
+    correspondence,
+    db,
+    handlers_admin as adm,
+    handlers_user as usr,
+    jobs,
+    version,
+)
 
 log = logging.getLogger(__name__)
 
@@ -149,6 +157,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_week_card_like, pattern=r"^wkh:"))
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
     app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
+    app.add_handler(CallbackQueryHandler(correspondence.on_callback, pattern=r"^corr:"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
@@ -205,6 +214,12 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("dismissstory", adm.cmd_dismissstory))
     app.add_handler(CommandHandler("errors", adm.cmd_errors))
     app.add_handler(CommandHandler("version", adm.cmd_version))
+    app.add_handler(CommandHandler("seasoncreate", adm.cmd_seasoncreate))
+    app.add_handler(CommandHandler("seasonprompt", adm.cmd_seasonprompt))
+    app.add_handler(CommandHandler("seasontest", adm.cmd_seasontest))
+    app.add_handler(CommandHandler("seasonstatus", adm.cmd_seasonstatus))
+    app.add_handler(CommandHandler("seasonpair", adm.cmd_seasonpair))
+    app.add_handler(CommandHandler("seasoncancel", adm.cmd_seasoncancel))
 
     # content
     app.add_handler(MessageHandler(filters.PHOTO, usr.on_photo))
