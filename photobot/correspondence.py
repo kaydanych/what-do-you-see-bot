@@ -41,40 +41,6 @@ def enrollment_keyboard(season_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def chain_keyboard(pair_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [[InlineKeyboardButton(
-            "🛑 End or report / Завершить или пожаловаться",
-            callback_data=f"corr:menu:{pair_id}",
-        )]]
-    )
-
-
-def safety_keyboard(pair_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton(
-                "Leave quietly / Выйти", callback_data=f"corr:leaveask:{pair_id}"
-            )],
-            [InlineKeyboardButton(
-                "Report this photo / Пожаловаться", callback_data=f"corr:report:{pair_id}"
-            )],
-            [InlineKeyboardButton("Back / Назад", callback_data=f"corr:back:{pair_id}")],
-        ]
-    )
-
-
-def leave_confirm_keyboard(pair_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton(
-                "Yes, end it / Да, завершить", callback_data=f"corr:leaveyes:{pair_id}"
-            )],
-            [InlineKeyboardButton("Back / Назад", callback_data=f"corr:back:{pair_id}")],
-        ]
-    )
-
-
 async def notify_admins(context, text: str) -> None:
     for admin_id in config.ADMIN_IDS:
         try:
@@ -205,7 +171,6 @@ async def pair_and_start(context, season_id: int, now: datetime | None = None) -
                         prompt=prompt_text(season, lang),
                         target=season["target_links"],
                     ),
-                    reply_markup=chain_keyboard(pair_id),
                 )
             except Forbidden:
                 db.set_user_status(uid, "inactive")
@@ -359,7 +324,6 @@ async def deliver_draft(context, season, pair, draft, now: datetime) -> bool:
                         recipient,
                         photo,
                         caption=caption,
-                        reply_markup=chain_keyboard(pair["id"]),
                     )
                 break
             except (TimedOut, NetworkError) as exc:
@@ -488,32 +452,13 @@ async def on_callback(update, context) -> None:
     if pair["status"] != "active":
         await query.answer(t(lang, "CORR_NO_LONGER_ACTIVE"), show_alert=True)
         return
-    if action == "menu":
-        await query.answer()
-        await query.edit_message_reply_markup(reply_markup=safety_keyboard(pair_id))
-    elif action == "back":
-        await query.answer()
-        await query.edit_message_reply_markup(reply_markup=chain_keyboard(pair_id))
-    elif action == "leaveask":
-        await query.answer()
-        await query.edit_message_reply_markup(reply_markup=leave_confirm_keyboard(pair_id))
-    elif action == "leaveyes":
-        await _end_pair(context, pair, uid, "participant_left")
-        await query.answer(t(lang, "CORR_LEFT"), show_alert=True)
+    if action in {"menu", "back", "leaveask", "leaveyes", "report"}:
+        # Season 2 originally attached an end/report control to every chain
+        # message.  Existing Telegram messages cannot be edited without their
+        # message IDs, which were not retained, so make those old controls
+        # harmless and remove the keyboard from the message when one is tapped.
+        await query.answer(t(lang, "CORR_SAFETY_MOVED"), show_alert=True)
         await query.edit_message_reply_markup(reply_markup=None)
-        await notify_admins(context, f"⏹ Chain #{pair_id}: participant {uid} left quietly.")
-    elif action == "report":
-        await _end_pair(context, pair, uid, "participant_report", report=True)
-        context.user_data["awaiting"] = f"corr_report:{pair_id}"
-        await query.answer(t(lang, "CORR_REPORTED"), show_alert=True)
-        await query.edit_message_reply_markup(reply_markup=None)
-        alleged = other_user(pair, uid)
-        await notify_admins(
-            context,
-            f"🚨 Anonymous chain #{pair_id} reported. Reporter: {uid}; other user: {alleged}. "
-            f"The chain is frozen and the pair is permanently blocked. /kick {alleged} if needed.",
-        )
-        await context.bot.send_message(uid, t(lang, "CORR_REPORT_NOTE"))
     else:
         await query.answer()
 
@@ -633,7 +578,6 @@ async def tick(context, now: datetime) -> None:
             try:
                 await context.bot.send_message(
                     uid, t(db.get_user_lang(uid), "CORR_REMINDER_24"),
-                    reply_markup=chain_keyboard(pair["id"]),
                 )
             except Exception:
                 log.exception("24h reminder for chain %s failed", pair["id"])
@@ -644,7 +588,6 @@ async def tick(context, now: datetime) -> None:
             try:
                 await context.bot.send_message(
                     uid, t(db.get_user_lang(uid), "CORR_REMINDER_48"),
-                    reply_markup=chain_keyboard(pair["id"]),
                 )
             except Exception:
                 log.exception("48h reminder for chain %s failed", pair["id"])

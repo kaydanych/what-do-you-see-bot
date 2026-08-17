@@ -102,6 +102,7 @@ def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeyp
         bot = FakeBot()
         context = SimpleNamespace(bot=bot, user_data={})
         assert await correspondence.pair_and_start(context, season_id, start) == "started 1 chain(s)"
+        assert all("reply_markup" not in kwargs for _, _, kwargs in bot.messages)
         pair = db.correspondence_pairs_for(season_id)[0]
         starter = pair["next_tg_id"]
         recipient = correspondence.other_user(pair, starter)
@@ -111,6 +112,7 @@ def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeyp
         assert await correspondence.handle_photo(first_update, context)
         assert bot.photos[-1][0] == recipient
         assert "Photograph 1 of 4" in bot.photos[-1][1]
+        assert "reply_markup" not in bot.photos[-1][2]
         assert len(db.correspondence_links(pair["id"])) == 1
 
         too_early, early_msg = photo_update(recipient)
