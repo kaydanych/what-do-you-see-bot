@@ -205,7 +205,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 | `/stats` · `/users` · `/feedback_all` | who's playing, what they think |
 | `/weekcard` · `/weekcards` | Sunday's week cards — who qualifies, what they chose |
 | `/seasoncreate` · `/seasonprompt` · `/seasonstatus` | schedule, set the opening prompt, and inspect a correspondence season |
-| `/seasontest` · `/seasonpair` · `/seasoncancel yes` | rehearse, pair immediately, or close a season |
+| `/seasontest` · `/seasonpair` · `/seasonbroadcast` · `/seasoncancel yes` | rehearse, pair, message the season, or close it |
 | `/errors` · `/version` | last log lines, which build is running |
 
 Every crash is DM'd to the admins with a traceback, and a tick job every minute

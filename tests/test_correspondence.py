@@ -140,6 +140,29 @@ def season(tmp_path, monkeypatch):
     return season_id, start
 
 
+def test_seasonbroadcast_reaches_only_enrollees_in_their_language(season):
+    async def scenario():
+        season_id, _ = season
+        db.upsert_user(3, "Not enrolled", None)
+        db.set_user_lang(2, "ru")
+        update, replies = text_update(99, "/seasonbroadcast Hello | Привет")
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+
+        await adm.cmd_seasonbroadcast(update, context)
+
+        assert {(uid, text) for uid, text, _ in bot.messages} == {
+            (1, "Hello"),
+            (2, "Привет"),
+        }
+        assert not any(uid == 3 for uid, _, _ in bot.messages)
+        assert replies == [
+            f"📮 Season #{season_id} broadcast: sent 2, failed 0.\n«Hello»\n🇷🇺 «Привет»"
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeypatch):
     async def scenario():
         season_id, start = season

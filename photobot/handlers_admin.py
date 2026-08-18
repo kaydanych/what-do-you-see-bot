@@ -40,6 +40,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 ✉️ Messages
 /dm <id|@username> <text>
 /broadcast <EN> | <RU>
+/seasonbroadcast <EN> | <RU>
 /askreminders
 
 📝 Prompts
@@ -69,7 +70,8 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasoncreate <Monday YYYY-MM-DD> [EN | RU]
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
-/seasonstatus  /seasonpairs  /seasonpair  /seasoncancel yes
+/seasonstatus  /seasonpairs  /seasonpair
+/seasonbroadcast <EN> | <RU>  /seasoncancel yes
 
 🖼 Collage
 /preview
@@ -1596,6 +1598,34 @@ async def cmd_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         f"\n🇷🇺 «{ru}»" if ru else ""
     )
     await update.message.reply_text(note)
+
+
+@admin_only
+async def cmd_seasonbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Broadcast to everyone who opted into the most recent correspondence season."""
+    parts = (update.message.text or "").split(None, 1)
+    body = parts[1].strip() if len(parts) > 1 else ""
+    if not body:
+        await update.message.reply_text(
+            "Usage: /seasonbroadcast <text>   (or  <English> | <Russian>)\n"
+            "Only people enrolled in the latest correspondence season receive it."
+        )
+        return
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    en, ru = parse_prompt_line(body)
+
+    def text_for(uid: int) -> str:
+        return ru if (ru and db.get_user_lang(uid) == "ru") else en
+
+    recipients = db.correspondence_enrollees(season["id"])
+    sent, failed = await jobs.send_per_user(context, recipients, text_for)
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} broadcast: sent {sent}, failed {failed}.\n«{en}»"
+        + (f"\n🇷🇺 «{ru}»" if ru else "")
+    )
 
 
 @admin_only

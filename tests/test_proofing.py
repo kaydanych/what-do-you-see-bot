@@ -47,7 +47,7 @@ def test_full_shortcuts_list_every_admin_command_once():
         "photos", "poll", "pollclose", "polledit", "pollresults", "polls",
         "preview", "proofer", "proofers", "proofing", "prompts", "publishstory",
         "resume", "setru", "settimes", "skipday", "stats", "status", "stories",
-        "seasoncancel", "seasoncreate", "seasonpair", "seasonpairs", "seasonprompt", "seasonstatus", "seasontest",
+        "seasonbroadcast", "seasoncancel", "seasoncreate", "seasonpair", "seasonpairs", "seasonprompt", "seasonstatus", "seasontest",
         "shortcuts", "suggestions", "times", "unkick", "users", "version",
         "weekcard", "weekcards",
     }
