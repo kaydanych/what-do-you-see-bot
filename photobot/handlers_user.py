@@ -804,7 +804,35 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if awaiting and update.message.text:
         text = update.message.text.strip()
         if text:
-            if awaiting.startswith("corr_report:"):
+            if awaiting.startswith("corr_admin_dm:"):
+                if uid not in config.ADMIN_IDS:
+                    return
+                _, raw_pair_id, scope, raw_awaited_id = awaiting.split(":", 3)
+                pair = db.get_correspondence_pair(int(raw_pair_id))
+                sent, failed = await correspondence.send_admin_pair_message(
+                    context,
+                    int(raw_pair_id),
+                    scope,
+                    text,
+                    expected_awaited_id=int(raw_awaited_id),
+                )
+                if pair is None:
+                    await update.message.reply_text("Pair no longer exists.")
+                elif sent:
+                    expected = 2 if scope == "both" else 1
+                    result = f"💬 Sent to {sent}/{expected} intended recipient(s)."
+                    if failed:
+                        result += f" {failed} delivery failed."
+                    await update.message.reply_text(result)
+                elif failed:
+                    await update.message.reply_text(
+                        f"⚠️ Couldn't deliver the message; {failed} delivery attempt(s) failed."
+                    )
+                else:
+                    await update.message.reply_text(
+                        "⚠️ Message not sent; the pair or awaited turn changed."
+                    )
+            elif awaiting.startswith("corr_report:"):
                 await correspondence.capture_report_note(
                     update, context, int(awaiting.split(":", 1)[1]), text
                 )

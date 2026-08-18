@@ -9,7 +9,13 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from photobot import config, correspondence, db
+from photobot import (
+    config,
+    correspondence,
+    db,
+    handlers_admin as adm,
+    handlers_user as usr,
+)
 
 
 class FakeTelegramFile:
@@ -54,6 +60,44 @@ class FakeBot:
     async def send_photo(self, chat_id, photo, **kwargs):
         self.photos.append((chat_id, kwargs.get("caption", ""), kwargs))
         return SimpleNamespace(photo=[SimpleNamespace(file_id=f"relay-{len(self.photos)}")])
+
+
+class FakeQuery:
+    def __init__(self, data: str):
+        self.data = data
+        self.answers = []
+        self.edits = []
+
+    async def answer(self, text=None, **kwargs):
+        self.answers.append((text, kwargs))
+
+    async def edit_message_text(self, text, **kwargs):
+        self.edits.append((text, kwargs))
+
+
+def admin_callback(data: str):
+    query = FakeQuery(data)
+    return SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(id=99, first_name="Admin", username="admin"),
+    ), query
+
+
+def text_update(uid: int, text: str):
+    replies = []
+
+    async def reply_text(body, **kwargs):
+        replies.append(body)
+
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=uid, first_name="Admin", username="admin"),
+        message=SimpleNamespace(
+            text=text,
+            reply_to_message=None,
+            reply_text=reply_text,
+        ),
+    )
+    return update, replies
 
 
 def jpeg_bytes() -> bytes:
@@ -172,3 +216,111 @@ def test_reported_pair_is_never_matched_again(season):
     season_id, _ = season
     db.block_correspondence_pair(1, 2, "reported")
     assert correspondence._valid_pairing([1, 2]) is None
+
+
+def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        awaited = pair["next_tg_id"]
+        partner = correspondence.other_user(pair, awaited)
+        monkeypatch.setattr(adm.jobs, "now_local", lambda: start + timedelta(hours=4))
+
+        replies = []
+        markups = []
+
+        async def reply_text(body, **kwargs):
+            replies.append(body)
+            markups.append(kwargs.get("reply_markup"))
+
+        command = SimpleNamespace(
+            effective_user=SimpleNamespace(id=99),
+            message=SimpleNamespace(reply_text=reply_text),
+        )
+        await adm.cmd_seasonpairs(command, context)
+        assert replies == [
+            f"📮 Season #{season_id} · 1 pairs\n"
+            "Tap a pair for details or messaging."
+        ]
+        assert markups[0].inline_keyboard[0][0].text == (
+            "1: 0/4 · awaiting first photo · 4h"
+        )
+
+        update, query = admin_callback(f"corradmin:view:{pair['id']}")
+        await adm.on_correspondence_admin(update, context)
+        labels = [
+            button.text
+            for row in query.edits[-1][1]["reply_markup"].inline_keyboard
+            for button in row
+        ]
+        assert labels == [
+            "✉️ Message both",
+            "✉️ Message awaited person",
+            "‹ All pairs",
+        ]
+
+        update, _ = admin_callback(f"corradmin:awaited:{pair['id']}")
+        await adm.on_correspondence_admin(update, context)
+        assert context.user_data["awaiting"] == (
+            f"corr_admin_dm:{pair['id']}:awaited:{awaited}"
+        )
+
+        before = len(bot.messages)
+        message, confirmations = text_update(99, "A gentle personal nudge")
+        await usr.on_other(message, context)
+        new_messages = bot.messages[before:]
+        assert any(
+            uid == awaited and "A gentle personal nudge" in text
+            for uid, text, _ in new_messages
+        )
+        assert not any(uid == partner for uid, _, _ in new_messages)
+        assert confirmations == ["💬 Sent to 1/1 intended recipient(s)."]
+
+        update, _ = admin_callback(f"corradmin:both:{pair['id']}")
+        await adm.on_correspondence_admin(update, context)
+        before = len(bot.messages)
+        message, confirmations = text_update(99, "A note for the pair")
+        await usr.on_other(message, context)
+        recipients = {
+            uid
+            for uid, text, _ in bot.messages[before:]
+            if "A note for the pair" in text
+        }
+        assert recipients == {awaited, partner}
+        assert confirmations == ["💬 Sent to 2/2 intended recipient(s)."]
+
+    asyncio.run(scenario())
+
+
+def test_awaited_person_message_is_cancelled_if_they_submit_a_draft(season):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        awaited = pair["next_tg_id"]
+
+        update, _ = admin_callback(f"corradmin:awaited:{pair['id']}")
+        await adm.on_correspondence_admin(update, context)
+        db.upsert_correspondence_draft(
+            pair["id"],
+            awaited,
+            1,
+            "/tmp/queued.jpg",
+            start.isoformat(timespec="seconds"),
+            start.isoformat(timespec="seconds"),
+        )
+
+        before = len(bot.messages)
+        message, confirmations = text_update(99, "This should not be sent")
+        await usr.on_other(message, context)
+        assert len(bot.messages) == before
+        assert confirmations == [
+            "⚠️ Message not sent; the pair or awaited turn changed."
+        ]
+
+    asyncio.run(scenario())

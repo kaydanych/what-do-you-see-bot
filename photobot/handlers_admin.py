@@ -69,7 +69,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasoncreate <Monday YYYY-MM-DD> [EN | RU]
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
-/seasonstatus  /seasonpair  /seasoncancel yes
+/seasonstatus  /seasonpairs  /seasonpair  /seasoncancel yes
 
 🖼 Collage
 /preview
@@ -286,6 +286,107 @@ async def cmd_seasonstatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("No correspondence season yet.")
         return
     await update.message.reply_text(correspondence.status_text(season))
+
+
+def _season_pairs_view(season) -> tuple[str, InlineKeyboardMarkup | None]:
+    pairs = db.correspondence_pairs_for(season["id"])
+    now = jobs.now_local()
+    text = f"📮 Season #{season['id']} · {len(pairs)} pairs\nTap a pair for details or messaging."
+    buttons = []
+    for number, pair in enumerate(pairs, 1):
+        summary = correspondence.admin_pair_summary(pair, season, number, now)
+        buttons.append([
+            InlineKeyboardButton(summary, callback_data=f"corradmin:view:{pair['id']}")
+        ])
+    return text, InlineKeyboardMarkup(buttons) if buttons else None
+
+
+@admin_only
+async def cmd_seasonpairs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    text, keyboard = _season_pairs_view(season)
+    await update.message.reply_text(text, reply_markup=keyboard)
+
+
+@admin_only
+async def on_correspondence_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    parts = query.data.split(":")
+    if len(parts) != 3:
+        await query.answer()
+        return
+    action, raw_id = parts[1:]
+    try:
+        item_id = int(raw_id)
+    except ValueError:
+        await query.answer()
+        return
+
+    if action == "list":
+        season = db.get_correspondence_season(item_id)
+        if season is None:
+            await query.answer("Season not found", show_alert=True)
+            return
+        text, keyboard = _season_pairs_view(season)
+        await query.answer()
+        await query.edit_message_text(text, reply_markup=keyboard)
+        return
+
+    pair = db.get_correspondence_pair(item_id)
+    if pair is None:
+        await query.answer("Pair not found", show_alert=True)
+        return
+    season = db.get_correspondence_season(pair["season_id"])
+    pairs = db.correspondence_pairs_for(season["id"])
+    number = next(i for i, row in enumerate(pairs, 1) if row["id"] == pair["id"])
+
+    if action == "view":
+        rows = [[
+            InlineKeyboardButton(
+                "✉️ Message both", callback_data=f"corradmin:both:{pair['id']}"
+            )
+        ]]
+        if pair["status"] == "active" and db.correspondence_draft(pair["id"]) is None:
+            rows.append([
+                InlineKeyboardButton(
+                    "✉️ Message awaited person",
+                    callback_data=f"corradmin:awaited:{pair['id']}",
+                )
+            ])
+        rows.append([
+            InlineKeyboardButton(
+                "‹ All pairs", callback_data=f"corradmin:list:{season['id']}"
+            )
+        ])
+        await query.answer()
+        await query.edit_message_text(
+            correspondence.admin_pair_detail(pair, season, number),
+            reply_markup=InlineKeyboardMarkup(rows),
+        )
+        return
+
+    if action not in {"both", "awaited"}:
+        await query.answer()
+        return
+    if action == "awaited" and (
+        pair["status"] != "active" or db.correspondence_draft(pair["id"]) is not None
+    ):
+        await query.answer("That photo is no longer awaited.", show_alert=True)
+        return
+    awaited_id = pair["next_tg_id"] if action == "awaited" else 0
+    context.user_data["awaiting"] = (
+        f"corr_admin_dm:{pair['id']}:{action}:{awaited_id}"
+    )
+    target = "both people" if action == "both" else "the person whose photo is awaited"
+    await query.answer("Ready for your message")
+    await context.bot.send_message(
+        update.effective_user.id,
+        f"Type the message for {target} in Pair {number}.\n\n"
+        "It will be labelled as a message from the organizer. Send any command to cancel.",
+    )
 
 
 @admin_only

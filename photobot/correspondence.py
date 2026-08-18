@@ -206,6 +206,90 @@ def _remaining_label(delta: timedelta, lang: str | None) -> str:
     return f"{hours}h" if hours else f"{mins}m"
 
 
+def _admin_age_label(delta: timedelta) -> str:
+    """Compact English duration for the private admin surface."""
+    minutes = max(0, int(delta.total_seconds() // 60))
+    days, minutes = divmod(minutes, 24 * 60)
+    hours, minutes = divmod(minutes, 60)
+    if days:
+        return f"{days}d {hours}h" if hours else f"{days}d"
+    if hours:
+        return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+    return f"{minutes}m"
+
+
+def admin_pair_summary(pair, season, number: int, now: datetime | None = None) -> str:
+    """One anonymous, actionable line for the season's admin pair list."""
+    links = len(db.correspondence_links(pair["id"]))
+    if pair["status"] == "complete":
+        state = "complete"
+    elif pair["status"] != "active":
+        reason = pair["ended_reason"] or pair["status"]
+        state = f"{pair['status']} ({reason})"
+    else:
+        now = now or now_local()
+        age = _admin_age_label(now - datetime.fromisoformat(pair["turn_started_at"]))
+        draft = db.correspondence_draft(pair["id"])
+        if draft is not None:
+            state = f"draft queued · {age}"
+        elif links == 0:
+            state = f"awaiting first photo · {age}"
+        else:
+            state = f"awaiting photo {links + 1} · {age}"
+    return f"{number}: {links}/{season['target_links']} · {state}"
+
+
+def admin_pair_detail(pair, season, number: int, now: datetime | None = None) -> str:
+    links = len(db.correspondence_links(pair["id"]))
+    draft = db.correspondence_draft(pair["id"])
+    lines = [
+        f"📮 Pair {number} · Season #{season['id']}",
+        f"Progress: {links}/{season['target_links']}",
+        f"Status: {pair['status']}",
+    ]
+    if pair["status"] == "active":
+        now = now or now_local()
+        age = _admin_age_label(now - datetime.fromisoformat(pair["turn_started_at"]))
+        waiting_for = "first photo" if links == 0 else f"photo {links + 1}"
+        lines.extend((f"Waiting for: {waiting_for}", f"Current turn: {age}"))
+        if draft is None:
+            lines.append("Draft: none")
+        else:
+            deliver_at = datetime.fromisoformat(draft["deliver_at"])
+            if deliver_at <= now:
+                lines.append("Draft: due for delivery")
+            else:
+                lines.append(f"Draft: queued for {deliver_at:%H:%M}")
+    elif pair["ended_reason"]:
+        lines.append(f"Reason: {pair['ended_reason']}")
+    return "\n".join(lines)
+
+
+async def send_admin_pair_message(
+    context,
+    pair_id: int,
+    scope: str,
+    text: str,
+    expected_awaited_id: int | None = None,
+) -> tuple[int, int]:
+    """Send a host message without exposing either member to the other."""
+    pair = db.get_correspondence_pair(pair_id)
+    if pair is None:
+        return 0, 0
+    if scope == "both":
+        recipients = (pair["user_a"], pair["user_b"])
+    elif (
+        scope == "awaited"
+        and pair["status"] == "active"
+        and db.correspondence_draft(pair_id) is None
+        and pair["next_tg_id"] == expected_awaited_id
+    ):
+        recipients = (pair["next_tg_id"],)
+    else:
+        return 0, 0
+    return await send_localized(context, list(recipients), "ORGANIZER_MESSAGE", text=text)
+
+
 async def handle_photo(update, context) -> bool:
     """Consume a photo when the sender belongs to the current active season.
 
@@ -610,5 +694,6 @@ def status_text(season) -> str:
         f"{len(db.correspondence_undecided(season['id']))} undecided\n"
         f"Chains: {active} active · {complete} complete · {ended} ended\n"
         f"Links: {links} · target {season['target_links']} each · cooldown {season['cooldown_minutes']} min\n"
-        f"Starts: {season['starts_at']}\nEnds: {season['ends_at']}"
+        f"Starts: {season['starts_at']}\nEnds: {season['ends_at']}\n"
+        "Pair details: /seasonpairs"
     )

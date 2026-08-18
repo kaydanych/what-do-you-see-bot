@@ -158,6 +158,7 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_poll_vote, pattern=r"^poll"))
     app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
     app.add_handler(CallbackQueryHandler(correspondence.on_callback, pattern=r"^corr:"))
+    app.add_handler(CallbackQueryHandler(adm.on_correspondence_admin, pattern=r"^corradmin:"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
@@ -218,6 +219,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("seasonprompt", adm.cmd_seasonprompt))
     app.add_handler(CommandHandler("seasontest", adm.cmd_seasontest))
     app.add_handler(CommandHandler("seasonstatus", adm.cmd_seasonstatus))
+    app.add_handler(CommandHandler("seasonpairs", adm.cmd_seasonpairs))
     app.add_handler(CommandHandler("seasonpair", adm.cmd_seasonpair))
     app.add_handler(CommandHandler("seasoncancel", adm.cmd_seasoncancel))
 

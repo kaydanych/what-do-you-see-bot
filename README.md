@@ -86,6 +86,8 @@ For an accelerated two-account rehearsal on a private test bot:
 
 The rehearsal uses the production flow with a four-photo target and one-minute
 reply delay. `/seasonstatus` shows the pool, chains and link count;
+`/seasonpairs` shows every anonymous pair's live progress and lets an admin
+message both participants or only the person whose next photo is awaited;
 `/seasoncancel yes` closes it. A real season is scheduled with
 `/seasoncreate <Monday YYYY-MM-DD>`. The shared opening prompt can be supplied
 there or finalized later with `/seasonprompt <EN prompt> | <RU prompt>` before
