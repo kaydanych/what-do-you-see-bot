@@ -179,6 +179,7 @@ def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeyp
         assert await correspondence.handle_photo(first_update, context)
         assert bot.photos[-1][0] == recipient
         assert "Photograph 1 of 4" in bot.photos[-1][1]
+        assert "Your task now: reply to the photograph above" in bot.photos[-1][1]
         assert "reply_markup" not in bot.photos[-1][2]
         assert len(db.correspondence_links(pair["id"])) == 1
 

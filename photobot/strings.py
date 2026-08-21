@@ -284,7 +284,8 @@ STRINGS = {
         "CORR_TURN_CHANGED": "Ход уже изменился — это фото не добавилось. Проверь переписку.",
         "CORR_RECEIVED": (
             "📮 Фото {position} из {target} в вашей цепочке.\n\n"
-            "Теперь твой ход. Можешь прислать ответ сразу: я сохраню его как черновик "
+            "Твоё задание сейчас: ответить одной фотографией на фото выше.\n\n"
+            "Можешь прислать ответ сразу: я сохраню его как черновик "
             "и отправлю напарнику через {wait}. До отправки фотографию можно заменить."
         ),
         "CORR_RECEIVED_FINAL": "📮 Фото {position} из {target} — ваша цепочка завершена ✅",
@@ -594,7 +595,8 @@ STRINGS = {
         "CORR_TURN_CHANGED": "The turn changed already, so this photo was not added. Check the correspondence.",
         "CORR_RECEIVED": (
             "📮 Photograph {position} of {target} in your chain.\n\n"
-            "It's your turn now. You may send your answer immediately: I will keep it as "
+            "Your task now: reply to the photograph above with one photograph of your own.\n\n"
+            "You may send your answer immediately: I will keep it as "
             "a draft and deliver it to your partner in {wait}. You may replace the photo "
             "until delivery."
         ),
