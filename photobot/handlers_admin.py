@@ -70,7 +70,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasoncreate <Monday YYYY-MM-DD> [EN | RU]
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
-/seasonstatus  /seasonpairs  /seasonpair
+/seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair
 /seasonbroadcast <EN> | <RU>  /seasoncancel yes
 
 🖼 Collage
@@ -311,6 +311,15 @@ async def cmd_seasonpairs(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
     text, keyboard = _season_pairs_view(season)
     await update.message.reply_text(text, reply_markup=keyboard)
+
+
+@admin_only
+async def cmd_seasonpairnames(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    await update.message.reply_text(correspondence.admin_pair_names_text(season))
 
 
 @admin_only

@@ -319,6 +319,24 @@ def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkey
     asyncio.run(scenario())
 
 
+def test_seasonpairnames_is_a_separate_admin_only_view(season):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        update, replies = text_update(99, "/seasonpairnames")
+
+        await adm.cmd_seasonpairnames(update, context)
+
+        assert replies == [
+            f"📮 Season #{season_id} · pair names (admin only)\n"
+            "1: Person 1 ↔ Person 2"
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_awaited_person_message_is_cancelled_if_they_submit_a_draft(season):
     async def scenario():
         season_id, start = season

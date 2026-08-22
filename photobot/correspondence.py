@@ -265,6 +265,23 @@ def admin_pair_detail(pair, season, number: int, now: datetime | None = None) ->
     return "\n".join(lines)
 
 
+def admin_pair_names_text(season) -> str:
+    """Private organizer-only map from a season's pair numbers to people."""
+    lines = [f"📮 Season #{season['id']} · pair names (admin only)"]
+    for number, pair in enumerate(db.correspondence_pairs_for(season["id"]), 1):
+        people = []
+        for tg_id in (pair["user_a"], pair["user_b"]):
+            user = db.get_user(tg_id)
+            if user is None:
+                people.append(f"id {tg_id}")
+                continue
+            name = (user["first_name"] or "").strip() or f"id {tg_id}"
+            username = f" @{user['username']}" if user["username"] else ""
+            people.append(f"{name}{username}")
+        lines.append(f"{number}: {' ↔ '.join(people)}")
+    return "\n".join(lines)
+
+
 async def send_admin_pair_message(
     context,
     pair_id: int,
