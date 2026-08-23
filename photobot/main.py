@@ -224,6 +224,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("seasonpairs", adm.cmd_seasonpairs))
     app.add_handler(CommandHandler("seasonpairnames", adm.cmd_seasonpairnames))
     app.add_handler(CommandHandler("seasonpair", adm.cmd_seasonpair))
+    app.add_handler(CommandHandler("seasonretry", adm.cmd_seasonretry))
     app.add_handler(CommandHandler("seasoncancel", adm.cmd_seasoncancel))
 
     # content

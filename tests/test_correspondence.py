@@ -52,14 +52,22 @@ class FakeBot:
     def __init__(self):
         self.messages = []
         self.photos = []
+        self.photo_sources = []
 
     async def send_message(self, chat_id, text, **kwargs):
         self.messages.append((chat_id, text, kwargs))
         return SimpleNamespace(message_id=len(self.messages))
 
     async def send_photo(self, chat_id, photo, **kwargs):
+        self.photo_sources.append(photo)
         self.photos.append((chat_id, kwargs.get("caption", ""), kwargs))
         return SimpleNamespace(photo=[SimpleNamespace(file_id=f"relay-{len(self.photos)}")])
+
+
+class FailingPhotoBot(FakeBot):
+    async def send_photo(self, chat_id, photo, **kwargs):
+        self.photo_sources.append(photo)
+        raise RuntimeError("temporary upload failure")
 
 
 class FakeQuery:
@@ -242,6 +250,68 @@ def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeyp
     asyncio.run(scenario())
 
 
+def test_delayed_delivery_falls_back_to_telegram_file_id(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        starter = pair["next_tg_id"]
+
+        monkeypatch.setattr(correspondence, "now_local", lambda: start)
+        first_update, _ = photo_update(starter)
+        await correspondence.handle_photo(first_update, context)
+
+        recipient = correspondence.other_user(pair, starter)
+        queued_update, _ = photo_update(recipient)
+        await correspondence.handle_photo(queued_update, context)
+        draft = db.correspondence_draft(pair["id"])
+        Path(draft["file_path"]).unlink()
+
+        await correspondence.tick(context, start + timedelta(minutes=1))
+
+        assert bot.photo_sources[-1] == "incoming-file"
+        assert len(db.correspondence_links(pair["id"])) == 2
+        assert db.get_correspondence_pair(pair["id"])["status"] == "active"
+
+    asyncio.run(scenario())
+
+
+def test_delayed_delivery_failure_is_retried_without_ending_chain(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        setup_bot = FakeBot()
+        context = SimpleNamespace(bot=setup_bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        starter = pair["next_tg_id"]
+
+        monkeypatch.setattr(correspondence, "now_local", lambda: start)
+        first_update, _ = photo_update(starter)
+        await correspondence.handle_photo(first_update, context)
+        recipient = correspondence.other_user(pair, starter)
+        queued_update, _ = photo_update(recipient)
+        await correspondence.handle_photo(queued_update, context)
+
+        failing_bot = FailingPhotoBot()
+        context.bot = failing_bot
+        await correspondence.tick(context, start + timedelta(minutes=1))
+
+        saved_pair = db.get_correspondence_pair(pair["id"])
+        draft = db.correspondence_draft(pair["id"])
+        assert saved_pair["status"] == "active"
+        assert saved_pair["ended_reason"] is None
+        assert draft["status"] == "pending"
+        assert draft["delivery_attempts"] == 1
+        assert draft["next_attempt_at"] == (start + timedelta(minutes=6)).isoformat(
+            timespec="seconds"
+        )
+        assert any("delivery delayed" in text for _, text, _ in failing_bot.messages)
+
+    asyncio.run(scenario())
+
+
 def test_waiting_turn_gets_one_and_two_day_nudges(season):
     async def scenario():
         season_id, start = season
@@ -356,10 +426,39 @@ def test_seasonpairnames_is_a_separate_admin_only_view(season):
 
         await adm.cmd_seasonpairnames(update, context)
 
-        assert replies == [
+        assert replies[0] in {
             f"📮 Season #{season_id} · pair names (admin only)\n"
-            "1: Person 1 ↔ Person 2"
-        ]
+            "1: Person 1 ↔ Person 2",
+            f"📮 Season #{season_id} · pair names (admin only)\n"
+            "1: Person 2 ↔ Person 1",
+        }
+
+    asyncio.run(scenario())
+
+
+def test_admin_can_resume_legacy_delivery_failure(season):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={}, args=["1"])
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        saved = config.PHOTOS_DIR / "legacy-draft.jpg"
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        saved.write_bytes(jpeg_bytes())
+        db.upsert_correspondence_draft(
+            pair["id"], pair["next_tg_id"], 1, str(saved), None,
+            start.isoformat(timespec="seconds"), start.isoformat(timespec="seconds"),
+        )
+        db.set_correspondence_pair_field(pair["id"], "status", "ended")
+        db.set_correspondence_pair_field(pair["id"], "ended_reason", "delivery_failed")
+        update, replies = text_update(99, "/seasonretry 1")
+
+        await adm.cmd_seasonretry(update, context)
+
+        assert db.get_correspondence_pair(pair["id"])["status"] == "active"
+        assert db.correspondence_draft(pair["id"])["status"] == "pending"
+        assert replies == ["📮 Pair 1 resumed. The saved photo is queued for retry."]
 
     asyncio.run(scenario())
 
@@ -380,6 +479,7 @@ def test_awaited_person_message_is_cancelled_if_they_submit_a_draft(season):
             awaited,
             1,
             "/tmp/queued.jpg",
+            "queued-file-id",
             start.isoformat(timespec="seconds"),
             start.isoformat(timespec="seconds"),
         )

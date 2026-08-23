@@ -254,8 +254,12 @@ CREATE TABLE IF NOT EXISTS correspondence_drafts (
     sender_id    INTEGER NOT NULL,
     position     INTEGER NOT NULL,
     file_path    TEXT NOT NULL,
+    telegram_file_id TEXT,
     submitted_at TEXT NOT NULL,
     deliver_at   TEXT NOT NULL,
+    delivery_attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    last_error   TEXT,
     status       TEXT NOT NULL DEFAULT 'pending' -- pending | delivering
 );
 -- A report permanently prevents the same two accounts being paired again.
@@ -313,6 +317,12 @@ def init(path: Path | str | None = None) -> None:
                 ("knock_resolved_at", "TEXT"),
             ],
             "stories": [("text_ru", "TEXT")],
+            "correspondence_drafts": [
+                ("telegram_file_id", "TEXT"),
+                ("delivery_attempts", "INTEGER NOT NULL DEFAULT 0"),
+                ("next_attempt_at", "TEXT"),
+                ("last_error", "TEXT"),
+            ],
         }
         for table, columns in migrations.items():
             existing = {
@@ -1506,6 +1516,7 @@ def upsert_correspondence_draft(
     sender_id: int,
     position: int,
     file_path: str,
+    telegram_file_id: str | None,
     submitted_at: str,
     deliver_at: str,
 ) -> bool:
@@ -1536,12 +1547,16 @@ def upsert_correspondence_draft(
             raise ValueError("draft is already being delivered")
         _conn.execute(
             "INSERT INTO correspondence_drafts("
-            "pair_id, sender_id, position, file_path, submitted_at, deliver_at) "
-            "VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(pair_id) DO UPDATE SET "
+            "pair_id, sender_id, position, file_path, telegram_file_id, submitted_at, deliver_at) "
+            "VALUES(?, ?, ?, ?, ?, ?, ?) ON CONFLICT(pair_id) DO UPDATE SET "
             "sender_id=excluded.sender_id, position=excluded.position, "
-            "file_path=excluded.file_path, submitted_at=excluded.submitted_at, "
-            "deliver_at=excluded.deliver_at, status='pending'",
-            (pair_id, sender_id, position, file_path, submitted_at, deliver_at),
+            "file_path=excluded.file_path, telegram_file_id=excluded.telegram_file_id, "
+            "submitted_at=excluded.submitted_at, deliver_at=excluded.deliver_at, "
+            "delivery_attempts=0, next_attempt_at=NULL, last_error=NULL, status='pending'",
+            (
+                pair_id, sender_id, position, file_path, telegram_file_id,
+                submitted_at, deliver_at,
+            ),
         )
         return existing is not None
 
@@ -1554,14 +1569,71 @@ def claim_due_correspondence_draft(
     with _lock, _conn:
         cur = _conn.execute(
             "UPDATE correspondence_drafts SET status='delivering' "
-            "WHERE pair_id=? AND status='pending' AND deliver_at<=?",
-            (pair_id, now),
+            "WHERE pair_id=? AND status='pending' AND deliver_at<=? "
+            "AND (next_attempt_at IS NULL OR next_attempt_at<=?)",
+            (pair_id, now, now),
         )
         if cur.rowcount == 0:
             return None
         return _conn.execute(
             "SELECT * FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
         ).fetchone()
+
+
+def defer_correspondence_draft(
+    pair_id: int, error: str, next_attempt_at: str
+) -> int:
+    """Release a failed delivery claim for a later retry; return attempt count."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        _conn.execute(
+            "UPDATE correspondence_drafts SET status='pending', "
+            "delivery_attempts=delivery_attempts+1, next_attempt_at=?, last_error=? "
+            "WHERE pair_id=? AND status='delivering'",
+            (next_attempt_at, error[:1000], pair_id),
+        )
+        row = _conn.execute(
+            "SELECT delivery_attempts FROM correspondence_drafts WHERE pair_id=?",
+            (pair_id,),
+        ).fetchone()
+        return row["delivery_attempts"] if row else 0
+
+
+def resume_failed_correspondence_delivery(pair_id: int, keep_draft: bool) -> bool:
+    """Reactivate a chain stopped by the old delivery-failure behavior."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        pair = _conn.execute(
+            "SELECT status, ended_reason FROM correspondence_pairs WHERE id=?",
+            (pair_id,),
+        ).fetchone()
+        if (
+            pair is None
+            or pair["status"] != "ended"
+            or pair["ended_reason"] != "delivery_failed"
+        ):
+            return False
+        if keep_draft:
+            draft = _conn.execute(
+                "SELECT 1 FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
+            ).fetchone()
+            if draft is None:
+                return False
+            _conn.execute(
+                "UPDATE correspondence_drafts SET status='pending', "
+                "next_attempt_at=NULL, last_error=NULL WHERE pair_id=?",
+                (pair_id,),
+            )
+        else:
+            _conn.execute(
+                "DELETE FROM correspondence_drafts WHERE pair_id=?", (pair_id,)
+            )
+        _conn.execute(
+            "UPDATE correspondence_pairs SET status='active', ended_reason=NULL "
+            "WHERE id=?",
+            (pair_id,),
+        )
+        return True
 
 
 def add_correspondence_link(

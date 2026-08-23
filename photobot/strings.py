@@ -293,6 +293,14 @@ STRINGS = {
             "В конце двух недель пришлю итог всех фотопереписок."
         ),
         "CORR_DELIVERY_FAILED": "Не смог доставить фото. Цепочка остановлена, организатор получил сообщение.",
+        "CORR_DELIVERY_DELAYED": (
+            "Не удалось доставить фото с первой попытки, но оно сохранено. "
+            "Цепочка остаётся активной — я попробую отправить его снова автоматически."
+        ),
+        "CORR_RETRY_RESUBMIT": (
+            "📮 Переписка снова активна, но сохранённое фото потерялось на сервере. "
+            "Пожалуйста, пришли его ещё раз."
+        ),
         "CORR_SENT": "Фото {position} из {target} доставлено ✅ Теперь ход партнёра.",
         "CORR_SENT_FINAL": (
             "Фото {position} из {target} доставлено. Цепочка завершена ✅\n\n"
@@ -615,6 +623,14 @@ STRINGS = {
             "At the end of the two weeks, I'll send the result of all the photo correspondences."
         ),
         "CORR_DELIVERY_FAILED": "I couldn't deliver the photograph. The chain is paused and the organizer has been told.",
+        "CORR_DELIVERY_DELAYED": (
+            "I couldn't deliver the photograph on the first attempt, but it is saved. "
+            "Your chain remains active and I will retry automatically."
+        ),
+        "CORR_RETRY_RESUBMIT": (
+            "📮 Your correspondence is active again, but the saved photograph was lost "
+            "on the server. Please send it once more."
+        ),
         "CORR_SENT": "Photograph {position} of {target} delivered ✅ Now it's your partner's turn.",
         "CORR_SENT_FINAL": (
             "Photograph {position} of {target} delivered. The chain is complete ✅\n\n"

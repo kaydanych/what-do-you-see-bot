@@ -372,6 +372,7 @@ async def handle_photo(update, context) -> bool:
             uid,
             position,
             str(dest),
+            media.file_id,
             submitted,
             deliver_at.isoformat(timespec="seconds"),
         )
@@ -418,24 +419,56 @@ async def deliver_draft(context, season, pair, draft, now: datetime) -> bool:
     )
     try:
         delivered = None
-        for attempt in range(3):
-            try:
-                with open(draft["file_path"], "rb") as photo:
-                    delivered = await context.bot.send_photo(
-                        recipient,
-                        photo,
-                        caption=caption,
+        local_path = Path(draft["file_path"])
+        sources = []
+        if local_path.is_file():
+            sources.append(("saved file", local_path))
+        if draft["telegram_file_id"]:
+            # Telegram file IDs are a second durable copy. They let a queued
+            # delivery survive a missing/corrupt bind-mounted file on the NAS.
+            sources.append(("Telegram file", draft["telegram_file_id"]))
+        if not sources:
+            raise FileNotFoundError(f"queued photo is missing: {local_path}")
+
+        errors = []
+        for source_name, source in sources:
+            for attempt in range(3):
+                try:
+                    if isinstance(source, Path):
+                        with source.open("rb") as photo:
+                            delivered = await context.bot.send_photo(
+                                recipient, photo, caption=caption
+                            )
+                    else:
+                        delivered = await context.bot.send_photo(
+                            recipient, source, caption=caption
+                        )
+                    break
+                except Forbidden:
+                    raise
+                except (TimedOut, NetworkError) as exc:
+                    log.warning(
+                        "correspondence draft %s %s attempt %s: %s",
+                        pair["id"], source_name, attempt + 1, exc,
                     )
+                    if attempt < 2:
+                        await asyncio.sleep(1.5 * (attempt + 1))
+                        continue
+                    errors.append(exc)
+                except Exception as exc:
+                    # A normalized local JPEG can still become unavailable or
+                    # unreadable later. Try Telegram's retained copy before
+                    # postponing the turn.
+                    log.warning(
+                        "correspondence draft %s %s failed: %s",
+                        pair["id"], source_name, exc,
+                    )
+                    errors.append(exc)
+                    break
+            if delivered is not None:
                 break
-            except (TimedOut, NetworkError) as exc:
-                log.warning(
-                    "correspondence draft %s delivery attempt %s: %s",
-                    pair["id"], attempt + 1, exc,
-                )
-                if attempt < 2:
-                    await asyncio.sleep(1.5 * (attempt + 1))
-                    continue
-                raise
+        if delivered is None:
+            raise errors[-1] if errors else RuntimeError("no photo delivery source")
     except Forbidden:
         db.set_user_status(recipient, "inactive")
         db.set_correspondence_pair_field(pair["id"], "status", "ended")
@@ -445,14 +478,27 @@ async def deliver_draft(context, season, pair, draft, now: datetime) -> bool:
         )
         await context.bot.send_message(sender, t(sender_lang, "CORR_DELIVERY_FAILED"))
         return False
-    except Exception:
+    except Exception as exc:
         log.exception("correspondence draft for pair %s delivery failed", pair["id"])
-        db.set_correspondence_pair_field(pair["id"], "status", "ended")
-        db.set_correspondence_pair_field(pair["id"], "ended_reason", "delivery_failed")
-        await notify_admins(
-            context, f"⚠️ Chain #{pair['id']} frozen after a photo delivery failure."
+        prior_attempts = draft["delivery_attempts"] or 0
+        retry_minutes = min(60, 5 * (3 ** min(prior_attempts, 3)))
+        retry_at = now + timedelta(minutes=retry_minutes)
+        attempts = db.defer_correspondence_draft(
+            pair["id"], f"{type(exc).__name__}: {exc}",
+            retry_at.isoformat(timespec="seconds"),
         )
-        await context.bot.send_message(sender, t(sender_lang, "CORR_DELIVERY_FAILED"))
+        if attempts == 1:
+            await notify_admins(
+                context,
+                f"⚠️ Chain #{pair['id']} photo delivery delayed "
+                f"({type(exc).__name__}); retrying in {retry_minutes} min.",
+            )
+            try:
+                await context.bot.send_message(
+                    sender, t(sender_lang, "CORR_DELIVERY_DELAYED")
+                )
+            except Exception:
+                log.exception("could not notify correspondence sender %s", sender)
         return False
 
     delivered_at = now.isoformat(timespec="seconds")

@@ -5,6 +5,7 @@ import logging
 import random
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta
+from pathlib import Path
 
 from telegram import (
     InlineKeyboardButton,
@@ -40,7 +41,6 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 ✉️ Messages
 /dm <id|@username> <text>
 /broadcast <EN> | <RU>
-/seasonbroadcast <EN> | <RU>
 /askreminders
 
 📝 Prompts
@@ -70,7 +70,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasoncreate <Monday YYYY-MM-DD> [EN | RU]
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
-/seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair
+/seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair  /seasonretry <pair>
 /seasonbroadcast <EN> | <RU>  /seasoncompleted [EN | RU]  /seasoncancel yes
 
 🖼 Collage
@@ -320,6 +320,51 @@ async def cmd_seasonpairnames(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("No correspondence season yet.")
         return
     await update.message.reply_text(correspondence.admin_pair_names_text(season))
+
+
+@admin_only
+async def cmd_seasonretry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Resume one pair stopped by the former fail-closed delivery behavior."""
+    try:
+        number = int(context.args[0])
+    except (IndexError, ValueError):
+        await update.message.reply_text("Usage: /seasonretry <pair number>")
+        return
+    season = db.latest_correspondence_season()
+    pairs = db.correspondence_pairs_for(season["id"]) if season else []
+    if number < 1 or number > len(pairs):
+        await update.message.reply_text("Pair not found.")
+        return
+    pair = pairs[number - 1]
+    draft = db.correspondence_draft(pair["id"])
+    keep_draft = bool(
+        draft
+        and (
+            Path(draft["file_path"]).is_file()
+            or draft["telegram_file_id"]
+        )
+    )
+    if not db.resume_failed_correspondence_delivery(pair["id"], keep_draft):
+        await update.message.reply_text(
+            "This pair is not stopped by a photo delivery failure."
+        )
+        return
+    if keep_draft:
+        await update.message.reply_text(
+            f"📮 Pair {number} resumed. The saved photo is queued for retry."
+        )
+        return
+    sender = pair["next_tg_id"]
+    try:
+        await context.bot.send_message(
+            sender, t(db.get_user_lang(sender), "CORR_RETRY_RESUBMIT")
+        )
+    except Exception:
+        log.exception("could not ask %s to resubmit correspondence photo", sender)
+    await update.message.reply_text(
+        f"📮 Pair {number} resumed, but its saved photo was missing. "
+        "The sender was asked to submit it again."
+    )
 
 
 @admin_only
