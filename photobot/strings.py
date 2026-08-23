@@ -288,10 +288,20 @@ STRINGS = {
             "Можешь прислать ответ сразу: я сохраню его как черновик "
             "и отправлю напарнику через {wait}. До отправки фотографию можно заменить."
         ),
-        "CORR_RECEIVED_FINAL": "📮 Фото {position} из {target} — ваша цепочка завершена ✅",
+        "CORR_RECEIVED_FINAL": (
+            "📮 Фото {position} из {target} — ваша цепочка завершена ✅\n\n"
+            "В конце двух недель пришлю итог всех фотопереписок."
+        ),
         "CORR_DELIVERY_FAILED": "Не смог доставить фото. Цепочка остановлена, организатор получил сообщение.",
         "CORR_SENT": "Фото {position} из {target} доставлено ✅ Теперь ход партнёра.",
-        "CORR_SENT_FINAL": "Фото {position} из {target} доставлено. Цепочка завершена ✅",
+        "CORR_SENT_FINAL": (
+            "Фото {position} из {target} доставлено. Цепочка завершена ✅\n\n"
+            "В конце двух недель пришлю итог всех фотопереписок."
+        ),
+        "CORR_FINALE_PENDING": (
+            "📮 Ваша цепочка уже завершена ✅\n\n"
+            "В конце двух недель пришлю итог всех фотопереписок."
+        ),
         "CORR_NOT_YOURS": "Эта кнопка не от твоей переписки.",
         "CORR_LEFT": "Переписка завершена. Партнёр увидит только, что цепочка остановлена.",
         "CORR_REPORTED": "Жалоба отправлена. Цепочка заморожена.",
@@ -600,10 +610,20 @@ STRINGS = {
             "a draft and deliver it to your partner in {wait}. You may replace the photo "
             "until delivery."
         ),
-        "CORR_RECEIVED_FINAL": "📮 Photograph {position} of {target} — your chain is complete ✅",
+        "CORR_RECEIVED_FINAL": (
+            "📮 Photograph {position} of {target} — your chain is complete ✅\n\n"
+            "At the end of the two weeks, I'll send the result of all the photo correspondences."
+        ),
         "CORR_DELIVERY_FAILED": "I couldn't deliver the photograph. The chain is paused and the organizer has been told.",
         "CORR_SENT": "Photograph {position} of {target} delivered ✅ Now it's your partner's turn.",
-        "CORR_SENT_FINAL": "Photograph {position} of {target} delivered. The chain is complete ✅",
+        "CORR_SENT_FINAL": (
+            "Photograph {position} of {target} delivered. The chain is complete ✅\n\n"
+            "At the end of the two weeks, I'll send the result of all the photo correspondences."
+        ),
+        "CORR_FINALE_PENDING": (
+            "📮 Your chain is already complete ✅\n\n"
+            "At the end of the two weeks, I'll send the result of all the photo correspondences."
+        ),
         "CORR_NOT_YOURS": "That button does not belong to your correspondence.",
         "CORR_LEFT": "The correspondence has ended. Your partner will only be told that the chain stopped.",
         "CORR_REPORTED": "Report sent. The chain is frozen.",

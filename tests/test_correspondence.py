@@ -163,6 +163,33 @@ def test_seasonbroadcast_reaches_only_enrollees_in_their_language(season):
     asyncio.run(scenario())
 
 
+def test_seasoncompleted_notifies_only_completed_chain_participants(season):
+    async def scenario():
+        season_id, start = season
+        db.upsert_user(3, "Not completed", None)
+        db.set_user_lang(2, "ru")
+        pair_id = db.create_correspondence_pair(season_id, 1, 2, 1, start.isoformat())
+        db.set_correspondence_pair_field(pair_id, "status", "complete")
+        update, replies = text_update(
+            99,
+            "/seasoncompleted Wait until August 30 | Ждите до 30 августа",
+        )
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+
+        await adm.cmd_seasoncompleted(update, context)
+
+        assert {(uid, text) for uid, text, _ in bot.messages} == {
+            (1, "Wait until August 30"),
+            (2, "Ждите до 30 августа"),
+        }
+        assert replies == [
+            f"📮 Season #{season_id} completion note: sent 2, failed 0."
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeypatch):
     async def scenario():
         season_id, start = season

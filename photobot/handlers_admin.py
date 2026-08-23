@@ -71,7 +71,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
 /seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair
-/seasonbroadcast <EN> | <RU>  /seasoncancel yes
+/seasonbroadcast <EN> | <RU>  /seasoncompleted [EN | RU]  /seasoncancel yes
 
 🖼 Collage
 /preview
@@ -1634,6 +1634,34 @@ async def cmd_seasonbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(
         f"📮 Season #{season['id']} broadcast: sent {sent}, failed {failed}.\n«{en}»"
         + (f"\n🇷🇺 «{ru}»" if ru else "")
+    )
+
+
+@admin_only
+async def cmd_seasoncompleted(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Notify participants whose chain has already reached its target."""
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    recipients = db.completed_correspondence_user_ids(season["id"])
+    if not recipients:
+        await update.message.reply_text("No completed chains in this season yet.")
+        return
+    parts = (update.message.text or "").split(None, 1)
+    body = parts[1].strip() if len(parts) > 1 else ""
+    en, ru = parse_prompt_line(body) if body else ("", None)
+
+    def text_for(uid: int) -> str:
+        if en:
+            return ru if (ru and db.get_user_lang(uid) == "ru") else en
+        return t(db.get_user_lang(uid), "CORR_FINALE_PENDING")
+
+    sent, failed = await jobs.send_per_user(
+        context, recipients, text_for
+    )
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} completion note: sent {sent}, failed {failed}."
     )
 
 

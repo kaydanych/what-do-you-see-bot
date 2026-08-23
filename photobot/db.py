@@ -1454,6 +1454,16 @@ def correspondence_pairs_for(season_id: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+def completed_correspondence_user_ids(season_id: int) -> list[int]:
+    """Both participants of each completed chain, once each."""
+    rows = _exec(
+        "SELECT user_a, user_b FROM correspondence_pairs "
+        "WHERE season_id=? AND status='complete' ORDER BY id",
+        (season_id,),
+    ).fetchall()
+    return list(dict.fromkeys(uid for row in rows for uid in (row["user_a"], row["user_b"])))
+
+
 def correspondence_pair_for_user(
     season_id: int, tg_id: int
 ) -> sqlite3.Row | None:
