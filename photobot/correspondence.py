@@ -246,6 +246,7 @@ def admin_pair_detail(pair, season, number: int, now: datetime | None = None) ->
         f"📮 Pair {number} · Season #{season['id']}",
         f"Progress: {links}/{season['target_links']}",
         f"Status: {pair['status']}",
+        f"Languages: {_pair_language_summary(pair)}",
     ]
     if pair["status"] == "active":
         now = now or now_local()
@@ -263,6 +264,25 @@ def admin_pair_detail(pair, season, number: int, now: datetime | None = None) ->
     elif pair["ended_reason"]:
         lines.append(f"Reason: {pair['ended_reason']}")
     return "\n".join(lines)
+
+
+def _admin_language_label(tg_id: int) -> str:
+    """Human-friendly language for the organizer's private pair controls."""
+    return {"en": "English", "ru": "Русский"}.get(
+        db.get_user_lang(tg_id), "not chosen"
+    )
+
+
+def _pair_language_summary(pair) -> str:
+    """Keep the pair anonymous while making an organizer's message language clear."""
+    labels = [
+        _admin_language_label(pair["user_a"]),
+        _admin_language_label(pair["user_b"]),
+    ]
+    if pair["status"] == "active":
+        awaited = _admin_language_label(pair["next_tg_id"])
+        return f"both — {' + '.join(labels)} · awaited — {awaited}"
+    return f"both — {' + '.join(labels)}"
 
 
 def admin_pair_names_text(season) -> str:

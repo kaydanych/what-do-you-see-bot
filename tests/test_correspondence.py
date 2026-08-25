@@ -388,6 +388,7 @@ def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkey
         assert context.user_data["awaiting"] == (
             f"corr_admin_dm:{pair['id']}:awaited:{awaited}"
         )
+        assert f"Language: English" in bot.messages[-1][1]
 
         before = len(bot.messages)
         message, confirmations = text_update(99, "A gentle personal nudge")
@@ -402,6 +403,7 @@ def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkey
 
         update, _ = admin_callback(f"corradmin:both:{pair['id']}")
         await adm.on_correspondence_admin(update, context)
+        assert f"Languages: English + English" in bot.messages[-1][1]
         before = len(bot.messages)
         message, confirmations = text_update(99, "A note for the pair")
         await usr.on_other(message, context)
@@ -414,6 +416,19 @@ def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkey
         assert confirmations == ["💬 Sent to 2/2 intended recipient(s)."]
 
     asyncio.run(scenario())
+
+
+def test_pair_admin_detail_shows_each_recipient_language(season):
+    season_id, _ = season
+    pair = db.create_correspondence_pair(season_id, 1, 2, 1)
+    db.set_user_lang(1, "en")
+    db.set_user_lang(2, "ru")
+
+    detail = correspondence.admin_pair_detail(
+        db.get_correspondence_pair(pair), db.get_correspondence_season(season_id), 1
+    )
+
+    assert "Languages: both — English + Русский · awaited — English" in detail
 
 
 def test_seasonpairnames_is_a_separate_admin_only_view(season):

@@ -437,10 +437,17 @@ async def on_correspondence_admin(update: Update, context: ContextTypes.DEFAULT_
         f"corr_admin_dm:{pair['id']}:{action}:{awaited_id}"
     )
     target = "both people" if action == "both" else "the person whose photo is awaited"
+    if action == "both":
+        languages = correspondence._pair_language_summary(pair).removeprefix(
+            "both — "
+        ).split(" · ")[0]
+    else:
+        languages = correspondence._admin_language_label(awaited_id)
     await query.answer("Ready for your message")
     await context.bot.send_message(
         update.effective_user.id,
-        f"Type the message for {target} in Pair {number}.\n\n"
+        f"Type the message for {target} in Pair {number}.\n"
+        f"Language{'s' if action == 'both' else ''}: {languages}\n\n"
         "It will be labelled as a message from the organizer. Send any command to cancel.",
     )
 
