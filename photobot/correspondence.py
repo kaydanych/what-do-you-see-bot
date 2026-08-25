@@ -348,55 +348,6 @@ async def handle_photo(update, context) -> bool:
     if pair["status"] != "active":
         await msg.reply_text(t(lang, "CORR_NO_LONGER_ACTIVE"))
         return True
-    replacement = db.correspondence_replacement_for_pair(pair["id"])
-    if replacement is not None:
-        if replacement["sender_id"] != uid:
-            await msg.reply_text(t(lang, "CORR_REPLACEMENT_WAIT"))
-            return True
-        now = now_local()
-        dest = (
-            config.PHOTOS_DIR / "correspondence" / f"s{season['id']}"
-            / f"p{pair['id']}"
-            / f"replacement{replacement['position']:02d}-{now:%Y%m%dT%H%M%S%f}.jpg"
-        )
-        tmp = dest.with_suffix(".tmp")
-        tmp.parent.mkdir(parents=True, exist_ok=True)
-        media = msg.photo[-1] if msg.photo else msg.document
-        try:
-            tg_file = await media.get_file()
-            await tg_file.download_to_drive(custom_path=tmp)
-            collage.save_submission(tmp, dest)
-        except Exception:
-            tmp.unlink(missing_ok=True)
-            log.exception("correspondence replacement fetch for %s failed", uid)
-            await msg.reply_text(t(lang, "PHOTO_FAILED"))
-            return True
-        finally:
-            tmp.unlink(missing_ok=True)
-        recipient = other_user(pair, uid)
-        try:
-            with dest.open("rb") as photo:
-                delivered = await context.bot.send_photo(
-                    recipient,
-                    photo,
-                    caption=t(db.get_user_lang(recipient), "CORR_REPLACEMENT_RECEIVED"),
-                )
-        except Exception:
-            log.exception("correspondence replacement for pair %s failed", pair["id"])
-            await msg.reply_text(t(lang, "PHOTO_FAILED"))
-            return True
-        if replacement["recipient_message_id"]:
-            try:
-                await context.bot.delete_message(recipient, replacement["recipient_message_id"])
-            except Exception:
-                # Telegram's 48-hour deletion window may have elapsed. The
-                # correction is still useful, so do not turn this into a failure.
-                log.info("could not delete replaced correspondence message %s", replacement["recipient_message_id"])
-        db.complete_correspondence_replacement(
-            replacement["link_id"], str(dest), delivered.photo[-1].file_id
-        )
-        await msg.reply_text(t(lang, "CORR_REPLACEMENT_SENT"))
-        return True
     if pair["next_tg_id"] != uid:
         await msg.reply_text(t(lang, "CORR_NOT_YOUR_TURN"))
         return True
@@ -586,8 +537,6 @@ async def deliver_draft(context, season, pair, draft, now: datetime) -> bool:
         return False
     if delivered and delivered.photo:
         db.set_correspondence_link_file_id(link["id"], delivered.photo[-1].file_id)
-    if getattr(delivered, "message_id", None):
-        db.set_correspondence_link_recipient_message_id(link["id"], delivered.message_id)
     try:
         await context.bot.send_message(sender, t(
             sender_lang,

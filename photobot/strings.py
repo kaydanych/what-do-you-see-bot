@@ -282,10 +282,6 @@ STRINGS = {
             "До этого момента можно заменить её ещё раз."
         ),
         "CORR_TURN_CHANGED": "Ход уже изменился — это фото не добавилось. Проверь переписку.",
-        "CORR_REPLACEMENT_REQUEST": "Организатор просит заменить твою последнюю фотографию. Пришли сейчас одну новую — она уйдёт напарнику как исправленная версия.",
-        "CORR_REPLACEMENT_WAIT": "Организатор попросил напарника заменить предыдущее фото. Подожди исправленную версию, прежде чем отвечать.",
-        "CORR_REPLACEMENT_SENT": "Исправленная фотография отправлена напарнику ✅",
-        "CORR_REPLACEMENT_RECEIVED": "От напарника пришла исправленная версия предыдущей фотографии.",
         "CORR_RECEIVED": (
             "📮 Фото {position} из {target} в вашей цепочке.\n\n"
             "Твоё задание сейчас: ответить одной фотографией на фото выше.\n\n"
@@ -615,10 +611,6 @@ STRINGS = {
             "You can replace it again until then."
         ),
         "CORR_TURN_CHANGED": "The turn changed already, so this photo was not added. Check the correspondence.",
-        "CORR_REPLACEMENT_REQUEST": "The organizer asked you to replace your last photograph. Please send one new photo now; it will reach your partner as a correction.",
-        "CORR_REPLACEMENT_WAIT": "The organizer has asked your partner to replace the previous photograph. Please wait for the corrected version before replying.",
-        "CORR_REPLACEMENT_SENT": "Replacement sent to your partner ✅",
-        "CORR_REPLACEMENT_RECEIVED": "A corrected version of the previous photograph has arrived from your partner.",
         "CORR_RECEIVED": (
             "📮 Photograph {position} of {target} in your chain.\n\n"
             "Your task now: reply to the photograph above with one photograph of your own.\n\n"

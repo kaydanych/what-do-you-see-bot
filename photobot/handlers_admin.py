@@ -412,17 +412,6 @@ async def on_correspondence_admin(update: Update, context: ContextTypes.DEFAULT_
                     callback_data=f"corradmin:awaited:{pair['id']}",
                 )
             ])
-        if (
-            pair["status"] == "active"
-            and db.correspondence_draft(pair["id"]) is None
-            and db.latest_correspondence_link(pair["id"]) is not None
-        ):
-            rows.append([
-                InlineKeyboardButton(
-                    "↺ Request replacement",
-                    callback_data=f"corradmin:replace:{pair['id']}",
-                )
-            ])
         rows.append([
             InlineKeyboardButton(
                 "‹ All pairs", callback_data=f"corradmin:list:{season['id']}"
@@ -432,28 +421,6 @@ async def on_correspondence_admin(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             correspondence.admin_pair_detail(pair, season, number),
             reply_markup=InlineKeyboardMarkup(rows),
-        )
-        return
-
-    if action == "replace":
-        link = db.request_correspondence_replacement(pair["id"])
-        if link is None:
-            await query.answer("A replacement cannot be requested right now.", show_alert=True)
-            return
-        try:
-            await context.bot.send_message(
-                link["sender_id"],
-                t(db.get_user_lang(link["sender_id"]), "CORR_REPLACEMENT_REQUEST"),
-            )
-        except Exception:
-            log.exception("could not request correspondence replacement from %s", link["sender_id"])
-            await query.answer("Could not reach the sender.", show_alert=True)
-            return
-        await query.answer("Replacement requested")
-        await context.bot.send_message(
-            update.effective_user.id,
-            f"↺ Pair {number}: the sender was asked to replace photo {link['position']}. "
-            "The recipient's turn is paused until it arrives.",
         )
         return
 
