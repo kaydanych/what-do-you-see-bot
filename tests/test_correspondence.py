@@ -250,6 +250,39 @@ def test_early_reply_is_replaceable_and_delivered_after_cooldown(season, monkeyp
     asyncio.run(scenario())
 
 
+def test_admin_requested_replacement_pauses_turn_and_replaces_latest_link(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        pair = db.correspondence_pairs_for(season_id)[0]
+        sender = pair["next_tg_id"]
+        recipient = correspondence.other_user(pair, sender)
+        monkeypatch.setattr(correspondence, "now_local", lambda: start)
+
+        first, _ = photo_update(sender)
+        await correspondence.handle_photo(first, context)
+        original = db.latest_correspondence_link(pair["id"])
+        assert db.request_correspondence_replacement(pair["id"])["id"] == original["id"]
+
+        blocked, blocked_message = photo_update(recipient)
+        await correspondence.handle_photo(blocked, context)
+        assert "Please wait" in blocked_message.replies[-1]
+
+        correction, correction_message = photo_update(sender)
+        await correspondence.handle_photo(correction, context)
+        updated = db.latest_correspondence_link(pair["id"])
+        assert updated["id"] == original["id"]
+        assert updated["file_path"] != original["file_path"]
+        assert db.correspondence_replacement_for_pair(pair["id"]) is None
+        assert bot.photos[-1][0] == recipient
+        assert "corrected version" in bot.photos[-1][1]
+        assert "Replacement sent" in correction_message.replies[-1]
+
+    asyncio.run(scenario())
+
+
 def test_delayed_delivery_falls_back_to_telegram_file_id(season, monkeypatch):
     async def scenario():
         season_id, start = season

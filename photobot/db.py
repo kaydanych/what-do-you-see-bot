@@ -243,6 +243,7 @@ CREATE TABLE IF NOT EXISTS correspondence_links (
     sender_id    INTEGER NOT NULL,
     file_path    TEXT NOT NULL,
     file_id      TEXT,
+    recipient_message_id INTEGER,
     submitted_at TEXT NOT NULL,
     UNIQUE(pair_id, position)
 );
@@ -261,6 +262,12 @@ CREATE TABLE IF NOT EXISTS correspondence_drafts (
     next_attempt_at TEXT,
     last_error   TEXT,
     status       TEXT NOT NULL DEFAULT 'pending' -- pending | delivering
+);
+-- A correction pauses the recipient's turn until the sender supplies a
+-- replacement for their latest delivered photograph.
+CREATE TABLE IF NOT EXISTS correspondence_replacements (
+    link_id      INTEGER PRIMARY KEY,
+    requested_at TEXT NOT NULL
 );
 -- A report permanently prevents the same two accounts being paired again.
 CREATE TABLE IF NOT EXISTS correspondence_blocks (
@@ -323,6 +330,7 @@ def init(path: Path | str | None = None) -> None:
                 ("next_attempt_at", "TEXT"),
                 ("last_error", "TEXT"),
             ],
+            "correspondence_links": [("recipient_message_id", "INTEGER")],
         }
         for table, columns in migrations.items():
             existing = {
@@ -1682,6 +1690,53 @@ def add_correspondence_link(
 
 def set_correspondence_link_file_id(link_id: int, file_id: str) -> None:
     _exec("UPDATE correspondence_links SET file_id=? WHERE id=?", (file_id, link_id))
+
+
+def set_correspondence_link_recipient_message_id(link_id: int, message_id: int) -> None:
+    _exec(
+        "UPDATE correspondence_links SET recipient_message_id=? WHERE id=?",
+        (message_id, link_id),
+    )
+
+
+def request_correspondence_replacement(pair_id: int) -> sqlite3.Row | None:
+    """Pause a live pair and ask the sender of its latest link for a correction."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        pair = _conn.execute("SELECT * FROM correspondence_pairs WHERE id=?", (pair_id,)).fetchone()
+        link = _conn.execute(
+            "SELECT * FROM correspondence_links WHERE pair_id=? ORDER BY position DESC LIMIT 1",
+            (pair_id,),
+        ).fetchone()
+        if pair is None or pair["status"] != "active" or link is None:
+            return None
+        if _conn.execute("SELECT 1 FROM correspondence_drafts WHERE pair_id=?", (pair_id,)).fetchone():
+            return None
+        _conn.execute(
+            "INSERT INTO correspondence_replacements(link_id, requested_at) VALUES(?, ?) "
+            "ON CONFLICT(link_id) DO UPDATE SET requested_at=excluded.requested_at",
+            (link["id"], _now()),
+        )
+        return link
+
+
+def correspondence_replacement_for_pair(pair_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT r.*, l.sender_id, l.position, l.file_path, l.recipient_message_id "
+        "FROM correspondence_replacements r "
+        "JOIN correspondence_links l ON l.id=r.link_id WHERE l.pair_id=?",
+        (pair_id,),
+    ).fetchone()
+
+
+def complete_correspondence_replacement(link_id: int, file_path: str, file_id: str) -> None:
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        _conn.execute(
+            "UPDATE correspondence_links SET file_path=?, file_id=? WHERE id=?",
+            (file_path, file_id, link_id),
+        )
+        _conn.execute("DELETE FROM correspondence_replacements WHERE link_id=?", (link_id,))
 
 
 def block_correspondence_pair(user_a: int, user_b: int, reason: str) -> None:
