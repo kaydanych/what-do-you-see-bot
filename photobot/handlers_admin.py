@@ -71,7 +71,9 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
 /seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair  /seasonretry <pair>
-/seasonbroadcast <EN> | <RU>  /seasoncompleted [EN | RU]  /seasoncancel yes
+/seasonbroadcast <EN> | <RU>  /seasoncompleted [EN | RU]
+/seasonfinish yes  /seasoncancel yes
+/seasonpublication  /seasonpublicationstatus
 
 🖼 Collage
 /preview
@@ -486,6 +488,37 @@ async def cmd_seasoncancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context, db.correspondence_enrollees(season["id"]), "CORR_SEASON_CANCELLED"
     )
     await update.message.reply_text(f"Closed correspondence season #{season['id']}.")
+
+
+@admin_only
+async def cmd_seasonfinish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Deliberately finish a successful season; seasons never auto-close."""
+    if context.args != ["yes"]:
+        await update.message.reply_text(
+            "This finishes the current season and closes any incomplete chains. "
+            "Confirm with /seasonfinish yes"
+        )
+        return
+    season = db.current_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No open correspondence season.")
+        return
+    ended = 0
+    for pair in db.correspondence_pairs_for(season["id"]):
+        if pair["status"] == "active":
+            db.set_correspondence_pair_field(pair["id"], "status", "ended")
+            db.set_correspondence_pair_field(pair["id"], "ended_reason", "season_finished")
+            ended += 1
+    now = jobs.now_local().isoformat(timespec="seconds")
+    db.set_correspondence_season_field(season["id"], "status", "closed")
+    db.set_correspondence_season_field(season["id"], "closed_at", now)
+    await correspondence.send_localized(
+        context, db.correspondence_enrollees(season["id"]), "CORR_SEASON_FINISHED"
+    )
+    await update.message.reply_text(
+        f"Finished correspondence season #{season['id']}; "
+        f"closed {ended} incomplete chain(s)."
+    )
 
 
 @admin_only
@@ -1714,6 +1747,86 @@ async def cmd_seasoncompleted(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     await update.message.reply_text(
         f"📮 Season #{season['id']} completion note: sent {sent}, failed {failed}."
+    )
+
+
+def _next_sunday_11(now: datetime) -> datetime:
+    days = (6 - now.weekday()) % 7
+    candidate = datetime.combine(now.date() + timedelta(days=days), time(11, 0), config.TZ)
+    return candidate if candidate > now else candidate + timedelta(days=7)
+
+
+@admin_only
+async def cmd_seasonpublication(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Announce bot-member sharing and open a private, pair-wide opt-out."""
+    season = db.latest_correspondence_season()
+    if season is None or not db.correspondence_pairs_for(season["id"]):
+        await update.message.reply_text("No paired correspondence season yet.")
+        return
+    if season["publication_notice_sent_at"]:
+        await update.message.reply_text(
+            "Publication notice was already sent. Use /seasonpublicationstatus."
+        )
+        return
+    now = correspondence.now_local()
+    deadline = _next_sunday_11(now)
+    refresh = deadline + timedelta(days=7)
+    stamp = now.isoformat(timespec="seconds")
+    db.set_correspondence_season_field(season["id"], "publication_notice_sent_at", stamp)
+    db.set_correspondence_season_field(
+        season["id"], "publication_opt_out_deadline", deadline.isoformat(timespec="seconds")
+    )
+    db.set_correspondence_season_field(
+        season["id"], "publication_refresh_at", refresh.isoformat(timespec="seconds")
+    )
+    if season["status"] == "active" and datetime.fromisoformat(season["ends_at"]) < refresh:
+        db.set_correspondence_season_field(
+            season["id"], "ends_at", refresh.isoformat(timespec="seconds")
+        )
+    recipients = list(dict.fromkeys(
+        uid for pair in db.correspondence_pairs_for(season["id"])
+        if pair["status"] != "reported"
+        for uid in (pair["user_a"], pair["user_b"])
+    ))
+    sent = failed = 0
+    for uid in recipients:
+        lang = db.get_user_lang(uid)
+        try:
+            await context.bot.send_message(
+                uid,
+                t(lang, "CORR_PUBLICATION_NOTICE", deadline=correspondence.publication_deadline_label(deadline, lang)),
+                reply_markup=correspondence.publication_keyboard(season["id"], lang),
+            )
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            failed += 1
+        except Exception:
+            log.exception("publication notice to %s failed", uid)
+            failed += 1
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} publication notice: sent {sent}, failed {failed}.\n"
+        f"Opt-out closes {deadline.isoformat(timespec='minutes')}. "
+        f"Active chains may continue until {refresh.isoformat(timespec='minutes')}."
+    )
+
+
+@admin_only
+async def cmd_seasonpublicationstatus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.latest_correspondence_season()
+    if season is None or not season["publication_notice_sent_at"]:
+        await update.message.reply_text("No publication notice has been sent.")
+        return
+    pairs = db.correspondence_pairs_for(season["id"])
+    private_users = db.correspondence_private_user_ids(season["id"])
+    private_pairs = sum(not db.correspondence_pair_is_publishable(pair["id"]) for pair in pairs)
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} publication\n"
+        f"Publishable lines: {len(pairs) - private_pairs}\n"
+        f"Private/reported lines: {private_pairs}\n"
+        f"Individual opt-outs: {len(private_users)}\n"
+        f"Deadline: {season['publication_opt_out_deadline']}\n"
+        f"Final refresh: {season['publication_refresh_at']}"
     )
 
 

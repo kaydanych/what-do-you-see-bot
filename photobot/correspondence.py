@@ -41,6 +41,24 @@ def enrollment_keyboard(season_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def publication_keyboard(season_id: int, lang: str | None, private: bool = False) -> InlineKeyboardMarkup:
+    if private:
+        label = "↩️ Снова разрешить публикацию" if lang == "ru" else "↩️ Allow inclusion again"
+        decision = "include"
+    else:
+        label = "🔒 Не публиковать нашу линию" if lang == "ru" else "🔒 Keep our line private"
+        decision = "private"
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(label, callback_data=f"corr:publish:{season_id}:{decision}")
+    ]])
+
+
+def publication_deadline_label(deadline: datetime, lang: str | None) -> str:
+    if lang == "ru":
+        return deadline.strftime("%H:%M воскресенья, %d.%m")
+    return deadline.strftime("%H:%M on Sunday, %B %d")
+
+
 async def notify_admins(context, text: str) -> None:
     for admin_id in config.ADMIN_IDS:
         try:
@@ -607,6 +625,32 @@ async def on_callback(update, context) -> None:
             await pair_and_start(context, season_id)
         return
 
+    if action == "publish" and len(parts) == 4:
+        try:
+            season_id = int(parts[2])
+        except ValueError:
+            await query.answer()
+            return
+        decision = parts[3]
+        season = db.get_correspondence_season(season_id)
+        pair = db.correspondence_pair_for_user(season_id, uid) if season else None
+        if pair is None or decision not in {"include", "private"}:
+            await query.answer(t(lang, "CORR_NOT_YOURS"), show_alert=True)
+            return
+        deadline_raw = season["publication_opt_out_deadline"]
+        deadline = datetime.fromisoformat(deadline_raw) if deadline_raw else None
+        if deadline is None or now_local() >= deadline:
+            await query.answer(t(lang, "CORR_PUBLICATION_CLOSED"), show_alert=True)
+            return
+        db.set_correspondence_publication_choice(season_id, uid, decision)
+        label = publication_deadline_label(deadline, lang)
+        key = "CORR_PUBLICATION_PRIVATE" if decision == "private" else "CORR_PUBLICATION_INCLUDED"
+        await query.answer(t(lang, key, deadline=label), show_alert=True)
+        await query.edit_message_reply_markup(
+            reply_markup=publication_keyboard(season_id, lang, decision == "private")
+        )
+        return
+
     try:
         pair_id = int(parts[2])
     except ValueError:
@@ -692,20 +736,18 @@ async def tick(context, now: datetime) -> None:
             await pair_and_start(context, season["id"], now)
             season = db.get_correspondence_season(season["id"])
 
-    if now >= ends:
-        db.set_correspondence_season_field(season["id"], "status", "closed")
+    # ``ends_at`` is now a review point, not an automatic shutdown.  The
+    # organizer decides when the remaining chains are satisfactory and closes
+    # the season explicitly with /seasonfinish yes.
+    if now >= ends and not season["planned_end_notified_at"]:
         db.set_correspondence_season_field(
-            season["id"], "closed_at", now.isoformat(timespec="seconds")
+            season["id"], "planned_end_notified_at", now.isoformat(timespec="seconds")
         )
-        for pair in db.correspondence_pairs_for(season["id"]):
-            if pair["status"] == "active":
-                db.set_correspondence_pair_field(pair["id"], "status", "ended")
-                db.set_correspondence_pair_field(pair["id"], "ended_reason", "season_closed")
-        await send_localized(
-            context, db.correspondence_enrollees(season["id"]), "CORR_SEASON_CLOSED"
+        await notify_admins(
+            context,
+            f"📮 Season #{season['id']} reached its planned end. Active chains remain "
+            "open; review /seasonpairs and close when ready with /seasonfinish yes.",
         )
-        await notify_admins(context, f"📮 Season #{season['id']} closed.")
-        return
     if season["status"] != "active":
         return
 

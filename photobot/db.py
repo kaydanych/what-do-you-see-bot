@@ -270,6 +270,15 @@ CREATE TABLE IF NOT EXISTS correspondence_blocks (
     reason     TEXT,
     PRIMARY KEY (user_low, user_high)
 );
+-- Publication is opt-out, but the choice remains individual and private.  A
+-- pair is publishable only when neither participant has chosen ``private``.
+CREATE TABLE IF NOT EXISTS correspondence_publication_choices (
+    season_id  INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    decision   TEXT NOT NULL,             -- include | private
+    decided_at TEXT NOT NULL,
+    PRIMARY KEY (season_id, tg_id)
+);
 """
 
 
@@ -322,6 +331,12 @@ def init(path: Path | str | None = None) -> None:
                 ("delivery_attempts", "INTEGER NOT NULL DEFAULT 0"),
                 ("next_attempt_at", "TEXT"),
                 ("last_error", "TEXT"),
+            ],
+            "correspondence_seasons": [
+                ("publication_notice_sent_at", "TEXT"),
+                ("publication_opt_out_deadline", "TEXT"),
+                ("publication_refresh_at", "TEXT"),
+                ("planned_end_notified_at", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -1343,6 +1358,8 @@ def week_card_messages_for(week_end: str, card_tg_id: int) -> list[sqlite3.Row]:
 _CORR_SEASON_FIELDS = {
     "status", "enrollment_opened_at", "reminder1_sent_at", "reminder2_sent_at",
     "paired_at", "closed_at", "starts_at", "ends_at", "prompt", "prompt_ru",
+    "publication_notice_sent_at", "publication_opt_out_deadline",
+    "publication_refresh_at", "planned_end_notified_at",
 }
 _CORR_PAIR_FIELDS = {
     "status", "next_tg_id", "turn_started_at", "ready_notified_at",
@@ -1482,6 +1499,56 @@ def correspondence_pair_for_user(
         "AND (user_a=? OR user_b=?) ORDER BY id LIMIT 1",
         (season_id, tg_id, tg_id),
     ).fetchone()
+
+
+def set_correspondence_publication_choice(
+    season_id: int, tg_id: int, decision: str
+) -> None:
+    if decision not in {"include", "private"}:
+        raise ValueError("publication decision must be include or private")
+    _exec(
+        "INSERT INTO correspondence_publication_choices("
+        "season_id, tg_id, decision, decided_at) VALUES(?, ?, ?, ?) "
+        "ON CONFLICT(season_id, tg_id) DO UPDATE SET "
+        "decision=excluded.decision, decided_at=excluded.decided_at",
+        (season_id, tg_id, decision, _now()),
+    )
+
+
+def correspondence_publication_choice(
+    season_id: int, tg_id: int
+) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_publication_choices "
+        "WHERE season_id=? AND tg_id=?", (season_id, tg_id)
+    ).fetchone()
+
+
+def correspondence_private_user_ids(season_id: int) -> list[int]:
+    rows = _exec(
+        "SELECT tg_id FROM correspondence_publication_choices "
+        "WHERE season_id=? AND decision='private' ORDER BY decided_at, tg_id",
+        (season_id,),
+    ).fetchall()
+    return [row["tg_id"] for row in rows]
+
+
+def correspondence_pair_is_publishable(pair_id: int) -> bool:
+    """Reported chains and chains with either participant opting out stay private."""
+    row = _exec(
+        "SELECT p.status, COUNT(DISTINCT c.tg_id) AS private_count, "
+        "COUNT(DISTINCT l.id) AS link_count "
+        "FROM correspondence_pairs p "
+        "LEFT JOIN correspondence_publication_choices c "
+        "ON c.season_id=p.season_id AND c.decision='private' "
+        "AND c.tg_id IN (p.user_a, p.user_b) "
+        "LEFT JOIN correspondence_links l ON l.pair_id=p.id "
+        "WHERE p.id=? GROUP BY p.id", (pair_id,)
+    ).fetchone()
+    return bool(
+        row and row["status"] != "reported"
+        and row["private_count"] == 0 and row["link_count"] > 0
+    )
 
 
 def set_correspondence_pair_field(pair_id: int, field: str, value) -> None:

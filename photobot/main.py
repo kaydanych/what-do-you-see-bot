@@ -192,6 +192,8 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
     app.add_handler(CommandHandler("seasonbroadcast", adm.cmd_seasonbroadcast))
     app.add_handler(CommandHandler("seasoncompleted", adm.cmd_seasoncompleted))
+    app.add_handler(CommandHandler("seasonpublication", adm.cmd_seasonpublication))
+    app.add_handler(CommandHandler("seasonpublicationstatus", adm.cmd_seasonpublicationstatus))
     app.add_handler(CommandHandler("askreminders", adm.cmd_askreminders))
     app.add_handler(CommandHandler("dm", adm.cmd_dm))
     app.add_handler(CommandHandler("kick", adm.cmd_kick))
@@ -226,6 +228,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("seasonpair", adm.cmd_seasonpair))
     app.add_handler(CommandHandler("seasonretry", adm.cmd_seasonretry))
     app.add_handler(CommandHandler("seasoncancel", adm.cmd_seasoncancel))
+    app.add_handler(CommandHandler("seasonfinish", adm.cmd_seasonfinish))
 
     # content
     app.add_handler(MessageHandler(filters.PHOTO, usr.on_photo))

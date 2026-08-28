@@ -82,6 +82,9 @@ class FakeQuery:
     async def edit_message_text(self, text, **kwargs):
         self.edits.append((text, kwargs))
 
+    async def edit_message_reply_markup(self, **kwargs):
+        self.edits.append((None, kwargs))
+
 
 def admin_callback(data: str):
     query = FakeQuery(data)
@@ -194,6 +197,95 @@ def test_seasoncompleted_notifies_only_completed_chain_participants(season):
         assert replies == [
             f"📮 Season #{season_id} completion note: sent 2, failed 0."
         ]
+
+    asyncio.run(scenario())
+
+
+def test_publication_notice_opens_opt_out_and_extends_active_season(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        pair_id = db.create_correspondence_pair(season_id, 1, 2, 1, start.isoformat())
+        db.set_correspondence_season_field(season_id, "status", "active")
+        db.add_correspondence_link(pair_id, 1, "one.jpg", start.isoformat(), 4)
+        now = datetime(2026, 8, 28, 17, 0, tzinfo=config.TZ)
+        monkeypatch.setattr(correspondence, "now_local", lambda: now)
+        update, replies = text_update(99, "/seasonpublication")
+        bot = FakeBot()
+
+        await adm.cmd_seasonpublication(update, SimpleNamespace(bot=bot, user_data={}))
+
+        assert {uid for uid, _, _ in bot.messages} == {1, 2}
+        assert all("Keep our line private" in kwargs["reply_markup"].inline_keyboard[0][0].text
+                   for _, _, kwargs in bot.messages)
+        saved = db.get_correspondence_season(season_id)
+        assert saved["publication_opt_out_deadline"].startswith("2026-08-30T11:00")
+        assert saved["publication_refresh_at"].startswith("2026-09-06T11:00")
+        assert saved["ends_at"].startswith("2026-09-06T11:00")
+        assert db.correspondence_pair_is_publishable(pair_id)
+        assert "sent 2, failed 0" in replies[0]
+
+    asyncio.run(scenario())
+
+
+def test_either_participant_can_privately_exclude_pair(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        pair_id = db.create_correspondence_pair(season_id, 1, 2, 1, start.isoformat())
+        db.add_correspondence_link(pair_id, 1, "one.jpg", start.isoformat(), 4)
+        deadline = start + timedelta(days=20)
+        db.set_correspondence_season_field(
+            season_id, "publication_opt_out_deadline", deadline.isoformat()
+        )
+        monkeypatch.setattr(correspondence, "now_local", lambda: start)
+        query = FakeQuery(f"corr:publish:{season_id}:private")
+        update = SimpleNamespace(callback_query=query, effective_user=SimpleNamespace(id=1))
+
+        await correspondence.on_callback(update, SimpleNamespace(bot=FakeBot()))
+
+        assert db.correspondence_publication_choice(season_id, 1)["decision"] == "private"
+        assert not db.correspondence_pair_is_publishable(pair_id)
+        assert "not be published" in query.answers[0][0]
+        assert query.edits[0][1]["reply_markup"].inline_keyboard[0][0].callback_data.endswith(":include")
+
+        query = FakeQuery(f"corr:publish:{season_id}:include")
+        update.callback_query = query
+        await correspondence.on_callback(update, SimpleNamespace(bot=FakeBot()))
+        assert db.correspondence_pair_is_publishable(pair_id)
+
+    asyncio.run(scenario())
+
+
+def test_planned_end_alerts_admin_but_keeps_chain_open(season):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        assert await correspondence.pair_and_start(context, season_id, start) == "started 1 chain(s)"
+        after_end = start + timedelta(days=4)
+
+        await correspondence.tick(context, after_end)
+
+        assert db.get_correspondence_season(season_id)["status"] == "active"
+        assert db.correspondence_pairs_for(season_id)[0]["status"] == "active"
+        assert any(uid == 99 and "planned end" in text for uid, text, _ in bot.messages)
+
+    asyncio.run(scenario())
+
+
+def test_seasonfinish_is_the_only_successful_manual_close(season, monkeypatch):
+    async def scenario():
+        season_id, start = season
+        pair_id = db.create_correspondence_pair(season_id, 1, 2, 1, start.isoformat())
+        db.set_correspondence_season_field(season_id, "status", "active")
+        monkeypatch.setattr(adm.jobs, "now_local", lambda: start)
+        update, replies = text_update(99, "/seasonfinish yes")
+        context = SimpleNamespace(bot=FakeBot(), user_data={}, args=["yes"])
+
+        await adm.cmd_seasonfinish(update, context)
+
+        assert db.get_correspondence_season(season_id)["status"] == "closed"
+        assert db.get_correspondence_pair(pair_id)["ended_reason"] == "season_finished"
+        assert "closed 1 incomplete chain" in replies[0]
 
     asyncio.run(scenario())
 

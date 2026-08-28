@@ -66,8 +66,9 @@ its own private chain of ten photographs:
   but it is delivered only six hours later. They may replace it freely before
   that moment; the partner sees only the final version;
 - an unanswered turn gets a gentle nudge after 24 hours and another after 48;
-- ten photographs complete the chain; the season closes after two weeks even
-  if a chain is shorter;
+- ten photographs complete the chain; after the planned window the organizer
+  reviews progress and manually finishes the season when the remaining chains
+  are satisfactory;
 - either participant can leave quietly or report. A report freezes the chain,
   alerts the admin, and prevents those two accounts from ever being paired
   again.
@@ -88,10 +89,20 @@ The rehearsal uses the production flow with a four-photo target and one-minute
 reply delay. `/seasonstatus` shows the pool, chains and link count;
 `/seasonpairs` shows every anonymous pair's live progress and lets an admin
 message both participants or only the person whose next photo is awaited;
-`/seasoncancel yes` closes it. A real season is scheduled with
+`/seasonfinish yes` deliberately completes it; `/seasoncancel yes` aborts it.
+A real season is scheduled with
 `/seasoncreate <Monday YYYY-MM-DD>`. The shared opening prompt can be supplied
 there or finalized later with `/seasonprompt <EN prompt> | <RU prompt>` before
 Monday pairing.
+
+When the anonymous dialogues are ready for the bot-member shared page,
+`/seasonpublication` sends a clear publication notice to every paired
+participant. Silence keeps the line eligible; either participant can privately
+exclude the entire line until Sunday at 11:00 Berlin time, without the partner
+being told who opted out. Partial lines may appear in the first Sunday snapshot.
+The page can be refreshed the following weekend, while active chains remain
+open until the organizer finishes the season. `/seasonpublicationstatus` shows
+aggregate eligibility.
 
 ## A day in the life
 

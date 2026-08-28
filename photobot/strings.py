@@ -319,6 +319,29 @@ STRINGS = {
         "CORR_PARTNER_ENDED": "Эта цепочка завершена досрочно. Тебе ничего делать не нужно.",
         "CORR_SEASON_CLOSED": "📮 Две недели прошли — сезон фотопереписок закрыт. Спасибо за цепочку.",
         "CORR_SEASON_CANCELLED": "📮 Эта фотопереписка закрыта организатором.",
+        "CORR_SEASON_FINISHED": (
+            "📮 Второй сезон завершён организатором. Спасибо за вашу фотопереписку."
+        ),
+        "CORR_PUBLICATION_NOTICE": (
+            "📮 Общая публикация второго сезона\n\n"
+            "Я готовлю страничку, где участники этого бота смогут посмотреть все "
+            "фотодиалоги, созданные во втором сезоне.\n\n"
+            "Я планирую добавить туда и вашу фотопереписку. На странице не будет "
+            "имён, ников, ссылок на профили или других указаний на авторов.\n\n"
+            "Если ты предпочитаешь оставить вашу линию закрытой, нажми кнопку ниже "
+            "до {deadline}. Если хотя бы один человек из пары откажется, вся линия "
+            "не будет опубликована. Напарник, конечно, не узнает, кто из пары отказался.\n\n"
+            "Если к этому воскресенью в линии будет меньше 10 фотографий, я опубликую "
+            "её как есть. У вас останется ещё неделя, чтобы завершить диалог, и к "
+            "следующим выходным я обновлю страницу.\n\n"
+            "Если ты не против публикации, ничего делать не нужно."
+        ),
+        "CORR_PUBLICATION_PRIVATE": (
+            "🔒 Готово. Ваша фотолиния не будет опубликована. Напарник не узнает, "
+            "кто из пары отказался. Решение можно изменить до {deadline}."
+        ),
+        "CORR_PUBLICATION_INCLUDED": "Понял — ваша линия снова может быть опубликована.",
+        "CORR_PUBLICATION_CLOSED": "Срок выбора уже закончился.",
         "CORR_TURN_READY": "📸 Шесть часов прошло — теперь можно ответить своей фотографией.",
         "CORR_REMINDER_24": "📮 Твой ход ждёт уже сутки. Не нужно идеального ответа — просто продолжи линию одной фотографией.",
         "CORR_REMINDER_48": "⏳ Цепочка ждёт твоего ответа уже двое суток. Пришли фото, когда сможешь; если не можешь продолжать, заверши цепочку кнопкой ниже.",
@@ -649,6 +672,29 @@ STRINGS = {
         "CORR_PARTNER_ENDED": "This chain has ended early. There is nothing you need to do.",
         "CORR_SEASON_CLOSED": "📮 The two weeks are over and the correspondence season is closed. Thank you for your chain.",
         "CORR_SEASON_CANCELLED": "📮 This photo correspondence was closed by the organizer.",
+        "CORR_SEASON_FINISHED": (
+            "📮 Season 2 has been finished by the organizer. Thank you for your photo correspondence."
+        ),
+        "CORR_PUBLICATION_NOTICE": (
+            "📮 Sharing Season 2\n\n"
+            "I'm preparing a page where people who use this bot can see all the photo "
+            "dialogues created during Season 2.\n\n"
+            "I plan to include your photo correspondence. The page will show no names, "
+            "usernames, profile links, or other clues to the authors.\n\n"
+            "If you would rather keep your line private, tap the button below by "
+            "{deadline}. If either person opts out, the whole line will not be published. "
+            "Your partner will not be told who opted out.\n\n"
+            "If your line has fewer than 10 photographs this Sunday, I will publish it "
+            "as it is. You will have another week to finish the dialogue, and I will "
+            "update the page the following weekend.\n\n"
+            "If you're comfortable with publication, you don't need to do anything."
+        ),
+        "CORR_PUBLICATION_PRIVATE": (
+            "🔒 Done. Your photo line will not be published. Your partner will not be "
+            "told who opted out. You can change this choice until {deadline}."
+        ),
+        "CORR_PUBLICATION_INCLUDED": "Got it — your line may be included again.",
+        "CORR_PUBLICATION_CLOSED": "The choice deadline has passed.",
         "CORR_TURN_READY": "📸 Six hours have passed — you can now answer with your photograph.",
         "CORR_REMINDER_24": "📮 Your turn has been waiting for a day. It doesn't need to be a perfect answer — just continue the line with one photograph.",
         "CORR_REMINDER_48": "⏳ The chain has been waiting for your answer for two days. Send a photo when you can; if you cannot continue, use the button below to end the chain.",

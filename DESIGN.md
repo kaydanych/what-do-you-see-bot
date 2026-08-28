@@ -164,9 +164,13 @@ even.
 
 **One chain per pair.** All pairs receive the same bilingual opening prompt.
 One member is chosen randomly to begin. The pair then alternates photographs
-until it reaches exactly ten links or the two-week window ends. After the first
+until it reaches exactly ten links or the organizer finishes the season. After the first
 photo, the prompt no longer drives the exchange: every new image responds to
 the image immediately before it.
+
+The scheduled end is an organizer review point, not an automatic shutdown.
+Active chains continue until the organizer explicitly finishes the season;
+finishing closes any incomplete chains and leaves completed chains intact.
 
 **Pacing.** A received photograph starts a six-hour private reply window. The
 recipient may submit immediately, but that image remains an explicit draft:
@@ -192,6 +196,15 @@ and individual links are stored in SQLite; normalized chain photos live below
 `data/photos/correspondence/s<season>/p<pair>/`. Turn advancement and link
 insertion are one SQLite transaction, so two near-simultaneous uploads cannot
 both claim the same position.
+
+**Shared-page publication.** The organizer may announce an anonymous shared
+page to all paired participants. This is a notice with a private opt-out, not a
+vote: no response leaves a line eligible, while either participant choosing
+privacy excludes the whole pair. The partner is never told who opted out, and
+reported chains are never eligible. The first Sunday snapshot may contain
+unfinished lines and is refreshed the following weekend. Active pairs remain
+open until the organizer finishes the season. Publication choices and deadlines
+are durable database state and are enforced when selecting lines for the page.
 
 **Rehearsal.** `/seasontest <EN> | <RU>` opens the real enrollment flow with a
 four-photo target and one-minute lock. After two test accounts opt in,
