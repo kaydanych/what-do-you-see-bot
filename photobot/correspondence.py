@@ -13,7 +13,7 @@ import random
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.error import Forbidden, NetworkError, TimedOut
 
 from . import collage, config, db
@@ -57,6 +57,48 @@ def publication_deadline_label(deadline: datetime, lang: str | None) -> str:
     if lang == "ru":
         return deadline.strftime("%H:%M воскресенья, %d.%m")
     return deadline.strftime("%H:%M on Sunday, %B %d")
+
+
+def introduction_keyboard(pair_id: int, lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(
+            t(lang, "CORR_INTRO_MEET_BUTTON"),
+            callback_data=f"corr:intro:{pair_id}:meet",
+        )],
+        [InlineKeyboardButton(
+            t(lang, "CORR_INTRO_ANONYMOUS_BUTTON"),
+            callback_data=f"corr:intro:{pair_id}:anonymous",
+        )],
+    ])
+
+
+def introduction_photo_keyboard(
+    pair_id: int, tg_id: int, lang: str | None
+) -> InlineKeyboardMarkup:
+    positions = [
+        link["position"] for link in db.correspondence_links(pair_id)
+        if link["sender_id"] != tg_id
+    ]
+    rows = [
+        [InlineKeyboardButton(
+            f"№{position}" if lang == "ru" else f"#{position}",
+            callback_data=f"corr:introphoto:{pair_id}:{position}",
+        ) for position in positions[i:i + 5]]
+        for i in range(0, len(positions), 5)
+    ]
+    rows.append([InlineKeyboardButton(
+        t(lang, "CORR_INTRO_SKIP_QUESTION_BUTTON"),
+        callback_data=f"corr:introphoto:{pair_id}:skip",
+    )])
+    return InlineKeyboardMarkup(rows)
+
+
+def introduction_skip_keyboard(
+    pair_id: int, action: str, label: str
+) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(label, callback_data=f"corr:{action}:{pair_id}:skip")
+    ]])
 
 
 async def notify_admins(context, text: str) -> None:
@@ -591,6 +633,212 @@ async def _end_pair(context, pair, actor: int, reason: str, report: bool = False
         log.debug("could not notify partner %s that chain ended", partner)
 
 
+async def send_introduction_offer(context, pair_id: int, tg_id: int) -> bool:
+    response = db.correspondence_introduction_response(pair_id, tg_id)
+    pair = db.get_correspondence_pair(pair_id)
+    if response is None or pair is None or response["offer_sent_at"]:
+        return False
+    lang = db.get_user_lang(tg_id)
+    try:
+        await context.bot.send_message(
+            tg_id,
+            t(lang, "CORR_INTRO_OFFER"),
+            reply_markup=introduction_keyboard(pair_id, lang),
+        )
+    except Forbidden:
+        db.set_user_status(tg_id, "inactive")
+        db.mark_correspondence_introduction_offer_sent(
+            pair_id, tg_id, now_local().isoformat(timespec="seconds")
+        )
+        return False
+    except Exception:
+        log.exception("introduction offer for pair %s to %s failed", pair_id, tg_id)
+        return False
+    db.mark_correspondence_introduction_offer_sent(
+        pair_id, tg_id, now_local().isoformat(timespec="seconds")
+    )
+    return True
+
+
+async def open_introductions(context, season_id: int) -> tuple[int, int, int]:
+    """Offer a mutual introduction to every completed pair in one season."""
+    now = now_local().isoformat(timespec="seconds")
+    opened = 0
+    for pair in db.correspondence_pairs_for(season_id):
+        if pair["status"] == "complete":
+            opened += int(db.offer_correspondence_introduction(pair["id"], now))
+    sent = failed = 0
+    for response in db.pending_correspondence_introduction_offers():
+        pair = db.get_correspondence_pair(response["pair_id"])
+        if pair is None or pair["season_id"] != season_id:
+            continue
+        if await send_introduction_offer(context, pair["id"], response["tg_id"]):
+            sent += 1
+        else:
+            failed += 1
+    return opened, sent, failed
+
+
+async def send_introduction_questions(context, pair_id: int, tg_id: int) -> bool:
+    """Show one participant the frames they received, then ask question 1."""
+    response = db.correspondence_introduction_response(pair_id, tg_id)
+    if response is None or response["questions_sent_at"] or response["stage"] != "photo":
+        return False
+    lang = db.get_user_lang(tg_id)
+    links = [
+        link for link in db.correspondence_links(pair_id)
+        if link["sender_id"] != tg_id
+    ]
+    if not links:
+        log.error("introduction pair %s has no received photos for %s", pair_id, tg_id)
+        return False
+
+    opened = []
+    media = []
+    try:
+        for index, link in enumerate(links):
+            source = link["file_id"]
+            if not source:
+                source = Path(link["file_path"]).open("rb")
+                opened.append(source)
+            key = "CORR_INTRO_PHOTO_FIRST_CAPTION" if index == 0 else "CORR_INTRO_PHOTO_CAPTION"
+            media.append(InputMediaPhoto(
+                source, caption=t(lang, key, position=link["position"])
+            ))
+        await context.bot.send_message(tg_id, t(lang, "CORR_INTRO_MUTUAL"))
+        if len(media) == 1:
+            await context.bot.send_photo(
+                tg_id, media[0].media, caption=media[0].caption
+            )
+        else:
+            await context.bot.send_media_group(tg_id, media=media)
+        await context.bot.send_message(
+            tg_id,
+            t(lang, "CORR_INTRO_FAVORITE_ASK"),
+            reply_markup=introduction_photo_keyboard(pair_id, tg_id, lang),
+        )
+    except Forbidden:
+        db.set_user_status(tg_id, "inactive")
+        db.mark_correspondence_introduction_questions_sent(
+            pair_id, tg_id, now_local().isoformat(timespec="seconds")
+        )
+        return False
+    except Exception:
+        log.exception("introduction questions for pair %s to %s failed", pair_id, tg_id)
+        return False
+    finally:
+        for handle in opened:
+            handle.close()
+    db.mark_correspondence_introduction_questions_sent(
+        pair_id, tg_id, now_local().isoformat(timespec="seconds")
+    )
+    return True
+
+
+def _introduction_text(pair_id: int, recipient: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    pair = db.get_correspondence_pair(pair_id)
+    if pair is None:
+        return None
+    partner_id = other_user(pair, recipient)
+    response = db.correspondence_introduction_response(pair_id, partner_id)
+    if response is None or not response["share_username"]:
+        return None
+    lang = db.get_user_lang(recipient)
+    username = response["share_username"]
+    name = (response["share_name"] or "").strip() or f"@{username}"
+    parts = [t(
+        lang, "CORR_INTRO_REVEAL", name=name, username=username
+    )]
+    if response["favorite_position"] is not None:
+        key = (
+            "CORR_INTRO_FAVORITE_REASON"
+            if response["favorite_reason"]
+            else "CORR_INTRO_FAVORITE_ONLY"
+        )
+        parts.append(t(
+            lang,
+            key,
+            name=name,
+            position=response["favorite_position"],
+            answer=response["favorite_reason"] or "",
+        ))
+    if response["question"]:
+        parts.append(t(
+            lang, "CORR_INTRO_QUESTION_FROM", name=name, answer=response["question"]
+        ))
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            t(lang, "CORR_INTRO_MESSAGE_BUTTON", name=name[:40]),
+            url=f"https://t.me/{username}",
+        )
+    ]])
+    return "\n\n".join(parts), keyboard
+
+
+async def send_due_introductions(context, now: datetime | None = None) -> None:
+    now = now or now_local()
+    stamp = now.isoformat(timespec="seconds")
+    for pair_id in db.due_correspondence_introductions(stamp):
+        pair = db.get_correspondence_pair(pair_id)
+        if pair is None:
+            continue
+        for uid in (pair["user_a"], pair["user_b"]):
+            response = db.correspondence_introduction_response(pair_id, uid)
+            if response is None or response["introduction_sent_at"]:
+                continue
+            payload = _introduction_text(pair_id, uid)
+            if payload is None:
+                await notify_admins(
+                    context,
+                    f"⚠️ Pair #{pair_id} introduction is missing a Telegram username.",
+                )
+                continue
+            text, keyboard = payload
+            try:
+                await context.bot.send_message(uid, text, reply_markup=keyboard)
+            except Forbidden:
+                db.set_user_status(uid, "inactive")
+                db.mark_correspondence_introduction_sent(pair_id, uid, stamp)
+            except Exception:
+                log.exception("introduction for pair %s to %s failed", pair_id, uid)
+            else:
+                db.mark_correspondence_introduction_sent(pair_id, uid, stamp)
+
+
+async def handle_introduction_text(update, context, response, text: str) -> None:
+    """Capture the optional explanation or question after mutual consent."""
+    uid = update.effective_user.id
+    pair_id = response["pair_id"]
+    lang = db.get_user_lang(uid)
+    value = text.strip()[:1000]
+    if response["stage"] == "reason":
+        if not db.save_correspondence_introduction_reason(pair_id, uid, value):
+            return
+        await update.message.reply_text(
+            t(lang, "CORR_INTRO_QUESTION_ASK"),
+            reply_markup=introduction_skip_keyboard(
+                pair_id, "introquestion", t(lang, "CORR_INTRO_SKIP_QUESTION_BUTTON")
+            ),
+        )
+        return
+    if response["stage"] == "question":
+        if not db.save_correspondence_introduction_question(
+            pair_id, uid, value, now_local().isoformat(timespec="seconds")
+        ):
+            return
+        await update.message.reply_text(t(lang, "CORR_INTRO_READY"))
+        await send_due_introductions(context)
+
+
+async def process_introductions(context, now: datetime) -> None:
+    """Retry durable intro delivery and enforce the 24-hour reveal deadline."""
+    for response in db.pending_correspondence_introduction_offers():
+        await send_introduction_offer(context, response["pair_id"], response["tg_id"])
+    for response in db.correspondence_introduction_question_recipients():
+        await send_introduction_questions(context, response["pair_id"], response["tg_id"])
+    await send_due_introductions(context, now)
+
+
 async def on_callback(update, context) -> None:
     query = update.callback_query
     parts = query.data.split(":")
@@ -660,6 +908,119 @@ async def on_callback(update, context) -> None:
     if pair is None or uid not in {pair["user_a"], pair["user_b"]}:
         await query.answer(t(lang, "CORR_NOT_YOURS"), show_alert=True)
         return
+
+    if action == "intro" and len(parts) == 4:
+        response = db.correspondence_introduction_response(pair_id, uid)
+        if pair["status"] != "complete" or response is None:
+            await query.answer(t(lang, "CORR_NO_LONGER_ACTIVE"), show_alert=True)
+            return
+        if response["introduction_sent_at"]:
+            await query.answer(t(lang, "CORR_INTRO_ALREADY_SENT"), show_alert=True)
+            return
+        decision = parts[3]
+        if decision not in {"meet", "anonymous"}:
+            await query.answer()
+            return
+        user = update.effective_user
+        if hasattr(user, "username"):
+            db.update_user_identity(
+                uid, getattr(user, "first_name", "") or "", user.username
+            )
+        saved_user = db.get_user(uid)
+        if decision == "meet" and not saved_user["username"]:
+            await query.answer(
+                t(lang, "CORR_INTRO_USERNAME_REQUIRED"), show_alert=True
+            )
+            return
+        now = now_local()
+        result = db.set_correspondence_introduction_decision(
+            pair_id,
+            uid,
+            decision,
+            now.isoformat(timespec="seconds"),
+            (now + timedelta(hours=24)).isoformat(timespec="seconds"),
+            share_name=saved_user["first_name"],
+            share_username=saved_user["username"],
+        )
+        if result == "missing":
+            await query.answer(t(lang, "CORR_NOT_YOURS"), show_alert=True)
+            return
+        key = (
+            "CORR_INTRO_STAYED_ANONYMOUS"
+            if decision == "anonymous"
+            else "CORR_INTRO_WAITING"
+        )
+        await query.answer(t(lang, key), show_alert=True)
+        await query.edit_message_reply_markup(reply_markup=None)
+        if result == "mutual":
+            for pending in db.correspondence_introduction_question_recipients():
+                if pending["pair_id"] == pair_id:
+                    await send_introduction_questions(context, pair_id, pending["tg_id"])
+        return
+
+    if action == "introphoto" and len(parts) == 4:
+        raw_position = parts[3]
+        try:
+            position = None if raw_position == "skip" else int(raw_position)
+        except ValueError:
+            await query.answer()
+            return
+        if not db.select_correspondence_introduction_photo(pair_id, uid, position):
+            await query.answer(t(lang, "CORR_INTRO_ALREADY_DECIDED"), show_alert=True)
+            return
+        await query.answer()
+        await query.edit_message_reply_markup(reply_markup=None)
+        if position is None:
+            await context.bot.send_message(
+                uid,
+                t(lang, "CORR_INTRO_QUESTION_ASK"),
+                reply_markup=introduction_skip_keyboard(
+                    pair_id,
+                    "introquestion",
+                    t(lang, "CORR_INTRO_SKIP_QUESTION_BUTTON"),
+                ),
+            )
+        else:
+            await context.bot.send_message(
+                uid,
+                t(lang, "CORR_INTRO_REASON_ASK", position=position),
+                reply_markup=introduction_skip_keyboard(
+                    pair_id,
+                    "introreason",
+                    t(lang, "CORR_INTRO_SKIP_REASON_BUTTON"),
+                ),
+            )
+        return
+
+    if action == "introreason" and len(parts) == 4 and parts[3] == "skip":
+        if not db.save_correspondence_introduction_reason(pair_id, uid, None):
+            await query.answer(t(lang, "CORR_INTRO_ALREADY_DECIDED"), show_alert=True)
+            return
+        await query.answer()
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(
+            uid,
+            t(lang, "CORR_INTRO_QUESTION_ASK"),
+            reply_markup=introduction_skip_keyboard(
+                pair_id,
+                "introquestion",
+                t(lang, "CORR_INTRO_SKIP_QUESTION_BUTTON"),
+            ),
+        )
+        return
+
+    if action == "introquestion" and len(parts) == 4 and parts[3] == "skip":
+        if not db.save_correspondence_introduction_question(
+            pair_id, uid, None, now_local().isoformat(timespec="seconds")
+        ):
+            await query.answer(t(lang, "CORR_INTRO_ALREADY_DECIDED"), show_alert=True)
+            return
+        await query.answer()
+        await query.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(uid, t(lang, "CORR_INTRO_READY"))
+        await send_due_introductions(context)
+        return
+
     if pair["status"] != "active":
         await query.answer(t(lang, "CORR_NO_LONGER_ACTIVE"), show_alert=True)
         return
@@ -705,6 +1066,9 @@ async def end_for_admin(context, tg_id: int) -> list[int]:
 
 
 async def tick(context, now: datetime) -> None:
+    # Introductions outlive the active season and must keep progressing after
+    # /seasonfinish closes it.
+    await process_introductions(context, now)
     season = db.current_correspondence_season()
     if season is None:
         return

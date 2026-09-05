@@ -184,12 +184,25 @@ an automatic exit.
 
 **Anonymity and safety.** Photos are uploaded by the bot as new files: there is
 no Telegram forward attribution, name, username or source filename. The bot
-never reveals pair identities to participants, including after completion.
+never reveals pair identities during the correspondence. After completion it
+may do so only through the explicit, mutual introduction flow below.
 Every chain message carries an end/report control. Leaving ends the chain and
 tells the partner only that it stopped. Reporting freezes it, records the most
 recent link for admin review, permanently blocks that account pair from future
 matching, and optionally captures a private report note. Kicking an account
 also ends its active chain and informs only the anonymous partner.
+
+**Mutual introduction.** After the finale, `/seasonintroductions` offers both
+people in every completed chain a one-tap choice to meet or stay anonymous.
+Questions begin only after both independently choose to meet, and a public
+Telegram username is required before an opt-in is accepted. The bot then
+resends each person's received photographs as a numbered album, asks which
+frame stayed with them and why, and invites one question for its author. Both
+answers are optional. Once both people finish, or 24 hours after mutual consent
+at the latest, the bot exchanges their names, usernames and any answers, with a
+direct profile button. A refusal or an unmatched opt-in reveals nothing and
+does not create questionnaire work. This private introduction never adds names
+to the shared publication.
 
 **Durability.** Seasons, enrollments, pairs, turn ownership, reminders, blocks
 and individual links are stored in SQLite; normalized chain photos live below

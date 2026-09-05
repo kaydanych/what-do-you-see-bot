@@ -845,6 +845,15 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             else:
                 await _store_suggestion(update, context, text)
             return
+    if update.message.text:
+        intro_response = db.pending_correspondence_introduction_response(uid)
+        if intro_response is not None:
+            text = update.message.text.strip()
+            if text:
+                await correspondence.handle_introduction_text(
+                    update, context, intro_response, text
+                )
+                return
     # A pending "story of the day" ask? Capture the author's reply. Prefer an
     # exact reply-to match (unambiguous if they were asked about several days),
     # then fall back to their latest open ask.

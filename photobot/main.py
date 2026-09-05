@@ -193,6 +193,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("seasonbroadcast", adm.cmd_seasonbroadcast))
     app.add_handler(CommandHandler("seasonawaiting", adm.cmd_seasonawaiting))
     app.add_handler(CommandHandler("seasoncompleted", adm.cmd_seasoncompleted))
+    app.add_handler(CommandHandler("seasonintroductions", adm.cmd_seasonintroductions))
     app.add_handler(CommandHandler("seasonpublication", adm.cmd_seasonpublication))
     app.add_handler(CommandHandler("seasonpublicationstatus", adm.cmd_seasonpublicationstatus))
     app.add_handler(CommandHandler("askreminders", adm.cmd_askreminders))

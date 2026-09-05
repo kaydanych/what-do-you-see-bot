@@ -71,9 +71,10 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
 /seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair  /seasonretry <pair>
-/seasonbroadcast <EN> | <RU>  /seasonawaiting <EN> | <RU>  /seasoncompleted [EN | RU]
+/seasonbroadcast <EN> | <RU>  /seasonawaiting <EN> | <RU>
+/seasoncompleted [EN | RU]
 /seasonfinish yes  /seasoncancel yes
-/seasonpublication  /seasonpublicationstatus
+/seasonpublication  /seasonpublicationstatus  /seasonintroductions
 
 🖼 Collage
 /preview
@@ -1782,6 +1783,38 @@ async def cmd_seasoncompleted(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     await update.message.reply_text(
         f"📮 Season #{season['id']} completion note: sent {sent}, failed {failed}."
+    )
+
+
+@admin_only
+async def cmd_seasonintroductions(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Invite every completed, safe pair to a mutual post-season introduction."""
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    completed = [
+        pair for pair in db.correspondence_pairs_for(season["id"])
+        if pair["status"] == "complete"
+    ]
+    if not completed:
+        await update.message.reply_text("No completed chains in this season yet.")
+        return
+    opened, sent, failed = await correspondence.open_introductions(
+        context, season["id"]
+    )
+    counts = db.correspondence_introduction_counts(season["id"])
+    if not opened and not sent and not failed:
+        await update.message.reply_text(
+            f"📮 Season #{season['id']} introductions are already open: "
+            f"{counts['mutual']} mutual, {counts['introduced']} introduced."
+        )
+        return
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} introductions: opened {opened} pair(s); "
+        f"sent {sent}, failed {failed}."
     )
 
 

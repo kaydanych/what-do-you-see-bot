@@ -279,6 +279,33 @@ CREATE TABLE IF NOT EXISTS correspondence_publication_choices (
     decided_at TEXT NOT NULL,
     PRIMARY KEY (season_id, tg_id)
 );
+-- After a completed anonymous chain, the organizer may invite both people to
+-- meet.  The first step costs one tap; questions only begin after both people
+-- opt in.  Delivery markers make the invitation and final introduction safe
+-- to retry after a restart.
+CREATE TABLE IF NOT EXISTS correspondence_introductions (
+    pair_id       INTEGER PRIMARY KEY,
+    offered_at    TEXT NOT NULL,
+    mutual_at     TEXT,
+    reveal_due_at TEXT
+);
+CREATE TABLE IF NOT EXISTS correspondence_introduction_responses (
+    pair_id           INTEGER NOT NULL,
+    tg_id             INTEGER NOT NULL,
+    decision          TEXT, -- meet | anonymous
+    share_name        TEXT,
+    share_username    TEXT,
+    stage             TEXT NOT NULL DEFAULT 'offered',
+    favorite_position INTEGER,
+    favorite_reason   TEXT,
+    question          TEXT,
+    decided_at        TEXT,
+    questions_sent_at TEXT,
+    completed_at      TEXT,
+    offer_sent_at     TEXT,
+    introduction_sent_at TEXT,
+    PRIMARY KEY (pair_id, tg_id)
+);
 """
 
 
@@ -337,6 +364,10 @@ def init(path: Path | str | None = None) -> None:
                 ("publication_opt_out_deadline", "TEXT"),
                 ("publication_refresh_at", "TEXT"),
                 ("planned_end_notified_at", "TEXT"),
+            ],
+            "correspondence_introduction_responses": [
+                ("share_name", "TEXT"),
+                ("share_username", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -416,6 +447,14 @@ def get_user_by_username(username: str) -> sqlite3.Row | None:
     return _exec(
         "SELECT * FROM users WHERE lower(username)=lower(?)", (username.lstrip("@"),)
     ).fetchone()
+
+
+def update_user_identity(tg_id: int, first_name: str, username: str | None) -> None:
+    """Refresh Telegram identity without changing access status."""
+    _exec(
+        "UPDATE users SET first_name=?, username=? WHERE tg_id=?",
+        (first_name, username, tg_id),
+    )
 
 
 def set_user_lang(tg_id: int, lang: str) -> None:
@@ -1549,6 +1588,260 @@ def correspondence_pair_is_publishable(pair_id: int) -> bool:
         row and row["status"] != "reported"
         and row["private_count"] == 0 and row["link_count"] > 0
     )
+
+
+def offer_correspondence_introduction(pair_id: int, offered_at: str) -> bool:
+    """Open a mutual introduction for one completed pair, once."""
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        pair = _conn.execute(
+            "SELECT p.*, ua.status AS user_a_status, ub.status AS user_b_status "
+            "FROM correspondence_pairs p "
+            "JOIN users ua ON ua.tg_id=p.user_a "
+            "JOIN users ub ON ub.tg_id=p.user_b WHERE p.id=?", (pair_id,)
+        ).fetchone()
+        if (
+            pair is None
+            or pair["status"] != "complete"
+            or "kicked" in {pair["user_a_status"], pair["user_b_status"]}
+        ):
+            return False
+        cur = _conn.execute(
+            "INSERT INTO correspondence_introductions(pair_id, offered_at) "
+            "VALUES(?, ?) ON CONFLICT(pair_id) DO NOTHING",
+            (pair_id, offered_at),
+        )
+        if not cur.rowcount:
+            return False
+        _conn.executemany(
+            "INSERT INTO correspondence_introduction_responses(pair_id, tg_id) "
+            "VALUES(?, ?)",
+            ((pair_id, pair["user_a"]), (pair_id, pair["user_b"])),
+        )
+        return True
+
+
+def correspondence_introduction(pair_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_introductions WHERE pair_id=?", (pair_id,)
+    ).fetchone()
+
+
+def correspondence_introduction_response(
+    pair_id: int, tg_id: int
+) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM correspondence_introduction_responses "
+        "WHERE pair_id=? AND tg_id=?", (pair_id, tg_id)
+    ).fetchone()
+
+
+def correspondence_introduction_responses(pair_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM correspondence_introduction_responses "
+        "WHERE pair_id=? ORDER BY tg_id", (pair_id,)
+    ).fetchall()
+
+
+def pending_correspondence_introduction_offers() -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT r.* FROM correspondence_introduction_responses r "
+        "JOIN correspondence_pairs p ON p.id=r.pair_id "
+        "WHERE r.offer_sent_at IS NULL AND p.status='complete' "
+        "ORDER BY r.pair_id, r.tg_id"
+    ).fetchall()
+
+
+def mark_correspondence_introduction_offer_sent(
+    pair_id: int, tg_id: int, sent_at: str
+) -> None:
+    _exec(
+        "UPDATE correspondence_introduction_responses SET offer_sent_at=? "
+        "WHERE pair_id=? AND tg_id=?",
+        (sent_at, pair_id, tg_id),
+    )
+
+
+def set_correspondence_introduction_decision(
+    pair_id: int,
+    tg_id: int,
+    decision: str,
+    decided_at: str,
+    reveal_due_at: str,
+    share_name: str | None = None,
+    share_username: str | None = None,
+) -> str:
+    """Store one immutable choice and return waiting, anonymous, or mutual."""
+    if decision not in {"meet", "anonymous"}:
+        raise ValueError("introduction decision must be meet or anonymous")
+    assert _conn is not None, "db.init() was not called"
+    with _lock, _conn:
+        row = _conn.execute(
+            "SELECT * FROM correspondence_introduction_responses "
+            "WHERE pair_id=? AND tg_id=?", (pair_id, tg_id)
+        ).fetchone()
+        if row is None:
+            return "missing"
+        if row["decision"] is not None:
+            intro = _conn.execute(
+                "SELECT mutual_at FROM correspondence_introductions WHERE pair_id=?",
+                (pair_id,),
+            ).fetchone()
+            return "mutual" if intro and intro["mutual_at"] else row["decision"]
+        _conn.execute(
+            "UPDATE correspondence_introduction_responses SET decision=?, "
+            "share_name=?, share_username=?, decided_at=? "
+            "WHERE pair_id=? AND tg_id=?",
+            (
+                decision,
+                share_name if decision == "meet" else None,
+                share_username if decision == "meet" else None,
+                decided_at,
+                pair_id,
+                tg_id,
+            ),
+        )
+        if decision == "anonymous":
+            return "anonymous"
+        choices = _conn.execute(
+            "SELECT decision FROM correspondence_introduction_responses "
+            "WHERE pair_id=? ORDER BY tg_id", (pair_id,)
+        ).fetchall()
+        if len(choices) == 2 and all(choice["decision"] == "meet" for choice in choices):
+            intro = _conn.execute(
+                "SELECT mutual_at FROM correspondence_introductions WHERE pair_id=?",
+                (pair_id,),
+            ).fetchone()
+            if intro and not intro["mutual_at"]:
+                _conn.execute(
+                    "UPDATE correspondence_introductions SET mutual_at=?, reveal_due_at=? "
+                    "WHERE pair_id=?",
+                    (decided_at, reveal_due_at, pair_id),
+                )
+                _conn.execute(
+                    "UPDATE correspondence_introduction_responses SET stage='photo' "
+                    "WHERE pair_id=?",
+                    (pair_id,),
+                )
+            return "mutual"
+        return "waiting"
+
+
+def correspondence_introduction_question_recipients() -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT r.* FROM correspondence_introduction_responses r "
+        "JOIN correspondence_introductions i ON i.pair_id=r.pair_id "
+        "WHERE i.mutual_at IS NOT NULL AND r.questions_sent_at IS NULL "
+        "AND r.introduction_sent_at IS NULL ORDER BY r.pair_id, r.tg_id"
+    ).fetchall()
+
+
+def mark_correspondence_introduction_questions_sent(
+    pair_id: int, tg_id: int, sent_at: str
+) -> None:
+    _exec(
+        "UPDATE correspondence_introduction_responses SET questions_sent_at=? "
+        "WHERE pair_id=? AND tg_id=?",
+        (sent_at, pair_id, tg_id),
+    )
+
+
+def select_correspondence_introduction_photo(
+    pair_id: int, tg_id: int, position: int | None
+) -> bool:
+    response = correspondence_introduction_response(pair_id, tg_id)
+    if response is None or response["stage"] != "photo":
+        return False
+    if position is not None:
+        link = _exec(
+            "SELECT 1 FROM correspondence_links WHERE pair_id=? AND position=? "
+            "AND sender_id<>?", (pair_id, position, tg_id)
+        ).fetchone()
+        if link is None:
+            return False
+    next_stage = "reason" if position is not None else "question"
+    return bool(_exec(
+        "UPDATE correspondence_introduction_responses "
+        "SET favorite_position=?, stage=? WHERE pair_id=? AND tg_id=? "
+        "AND stage='photo' AND introduction_sent_at IS NULL",
+        (position, next_stage, pair_id, tg_id),
+    ).rowcount)
+
+
+def save_correspondence_introduction_reason(
+    pair_id: int, tg_id: int, reason: str | None
+) -> bool:
+    return bool(_exec(
+        "UPDATE correspondence_introduction_responses "
+        "SET favorite_reason=?, stage='question' "
+        "WHERE pair_id=? AND tg_id=? AND stage='reason' "
+        "AND introduction_sent_at IS NULL",
+        (reason, pair_id, tg_id),
+    ).rowcount)
+
+
+def save_correspondence_introduction_question(
+    pair_id: int, tg_id: int, question: str | None, completed_at: str
+) -> bool:
+    return bool(_exec(
+        "UPDATE correspondence_introduction_responses "
+        "SET question=?, stage='done', completed_at=? "
+        "WHERE pair_id=? AND tg_id=? AND stage='question' "
+        "AND introduction_sent_at IS NULL",
+        (question, completed_at, pair_id, tg_id),
+    ).rowcount)
+
+
+def pending_correspondence_introduction_response(tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT r.* FROM correspondence_introduction_responses r "
+        "JOIN correspondence_introductions i ON i.pair_id=r.pair_id "
+        "WHERE r.tg_id=? AND i.mutual_at IS NOT NULL "
+        "AND r.stage IN ('reason', 'question') "
+        "AND r.introduction_sent_at IS NULL "
+        "ORDER BY i.mutual_at DESC LIMIT 1",
+        (tg_id,),
+    ).fetchone()
+
+
+def due_correspondence_introductions(now: str) -> list[int]:
+    rows = _exec(
+        "SELECT i.pair_id FROM correspondence_introductions i "
+        "JOIN correspondence_introduction_responses r ON r.pair_id=i.pair_id "
+        "WHERE i.mutual_at IS NOT NULL AND r.introduction_sent_at IS NULL "
+        "GROUP BY i.pair_id, i.reveal_due_at "
+        "HAVING MIN(CASE WHEN r.stage='done' THEN 1 ELSE 0 END)=1 "
+        "OR i.reveal_due_at<=? ORDER BY i.pair_id",
+        (now,),
+    ).fetchall()
+    return [row["pair_id"] for row in rows]
+
+
+def mark_correspondence_introduction_sent(
+    pair_id: int, tg_id: int, sent_at: str
+) -> None:
+    _exec(
+        "UPDATE correspondence_introduction_responses SET introduction_sent_at=? "
+        "WHERE pair_id=? AND tg_id=?",
+        (sent_at, pair_id, tg_id),
+    )
+
+
+def correspondence_introduction_counts(season_id: int) -> dict[str, int]:
+    row = _exec(
+        "SELECT COUNT(DISTINCT i.pair_id) AS offered, "
+        "COUNT(DISTINCT CASE WHEN i.mutual_at IS NOT NULL THEN i.pair_id END) AS mutual, "
+        "COUNT(DISTINCT CASE WHEN NOT EXISTS ("
+        "SELECT 1 FROM correspondence_introduction_responses pending "
+        "WHERE pending.pair_id=i.pair_id AND pending.introduction_sent_at IS NULL"
+        ") THEN i.pair_id END) AS introduced "
+        "FROM correspondence_introductions i "
+        "JOIN correspondence_pairs p ON p.id=i.pair_id "
+        "JOIN correspondence_introduction_responses r ON r.pair_id=i.pair_id "
+        "WHERE p.season_id=?",
+        (season_id,),
+    ).fetchone()
+    return {key: int(row[key] or 0) for key in ("offered", "mutual", "introduced")}
 
 
 def set_correspondence_pair_field(pair_id: int, field: str, value) -> None:

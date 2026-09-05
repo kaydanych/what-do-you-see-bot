@@ -49,7 +49,8 @@ def test_full_shortcuts_list_every_admin_command_once():
         "resume", "setru", "settimes", "skipday", "stats", "status", "stories",
         "seasonawaiting", "seasonbroadcast", "seasoncancel", "seasoncompleted", "seasoncreate",
         "seasonpair", "seasonpairnames", "seasonpairs", "seasonprompt", "seasonretry",
-        "seasonstatus", "seasontest",
+        "seasonstatus", "seasontest", "seasonfinish", "seasonintroductions", "seasonpublication",
+        "seasonpublicationstatus",
         "shortcuts", "suggestions", "times", "unkick", "users", "version",
         "weekcard", "weekcards",
     }

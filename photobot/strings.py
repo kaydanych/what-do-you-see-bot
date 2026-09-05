@@ -239,7 +239,8 @@ STRINGS = {
         "CORR_ENROLL_OPEN": (
             "📮 Новый сезон: визуальная переписка\n\n"
             "На две недели я случайно соединю тебя с одним человеком. "
-            "Имён и ников не будет: пара останется полностью анонимной.\n\n"
+            "Во время переписки имён и ников не будет: вы будете знать "
+            "друг друга только по фотографиям.\n\n"
             "В понедельник все пары получат одну и ту же точку старта.\n\n"
             "Вы будете по очереди отвечать фотографией на предыдущую. "
             "Ответ можно прислать сразу, но напарник получит его через 6 часов. "
@@ -256,12 +257,14 @@ STRINGS = {
         "CORR_JOINED": "Ты в игре 📮 В понедельник я соберу пары.",
         "CORR_DECLINED": "Понял — пропускаешь этот сезон.",
         "CORR_STARTER": (
-            "📮 Пара собрана. Вы не узнаете имён друг друга — только фотографии.\n\n"
+            "📮 Пара собрана. До конца переписки вы не узнаете имён друг друга — "
+            "только фотографии.\n\n"
             "Ваша точка старта:\n«{prompt}»\n\n"
             "Твой ход первый. Пришли одну фотографию; затем цепочка пойдёт по очереди до {target} фото."
         ),
         "CORR_WAITER": (
-            "📮 Пара собрана. Вы не узнаете имён друг друга — только фотографии.\n\n"
+            "📮 Пара собрана. До конца переписки вы не узнаете имён друг друга — "
+            "только фотографии.\n\n"
             "Ваша точка старта:\n«{prompt}»\n\n"
             "Первый ход у твоего неизвестного партнёра. Фото придёт сюда сразу, как только оно будет готово. "
             "Цель — {target} фото."
@@ -310,6 +313,62 @@ STRINGS = {
             "📮 Ваша цепочка уже завершена ✅\n\n"
             "В конце двух недель пришлю итог всех фотопереписок."
         ),
+        "CORR_INTRO_OFFER": (
+            "Вы две недели разговаривали фотографиями. Хотите познакомиться "
+            "с человеком по ту сторону?\n\n"
+            "Если согласие будет взаимным, я обменяю ваши Telegram-ники и задам "
+            "пару вопросов."
+        ),
+        "CORR_INTRO_MEET_BUTTON": "👋 Да, хочу познакомиться",
+        "CORR_INTRO_ANONYMOUS_BUTTON": "🔒 Остаться анонимными",
+        "CORR_INTRO_WAITING": "Запомнил 👋",
+        "CORR_INTRO_STAYED_ANONYMOUS": (
+            "Хорошо — ваша фотопереписка останется анонимной."
+        ),
+        "CORR_INTRO_USERNAME_REQUIRED": (
+            "Чтобы познакомиться, сначала добавь публичный Telegram-ник в настройках "
+            "профиля, а затем нажми кнопку ещё раз."
+        ),
+        "CORR_INTRO_MUTUAL": (
+            "Вы оба хотите познакомиться 👋\n\n"
+            "Перед знакомством задам два коротких вопроса, чтобы начать разговор "
+            "было проще. Любой из них можно пропустить — никнеймами я обменяю вас "
+            "в любом случае."
+        ),
+        "CORR_INTRO_PHOTO_CAPTION": "Кадр №{position}",
+        "CORR_INTRO_PHOTO_FIRST_CAPTION": (
+            "Кадры, которые пришли тебе во время переписки:\n\nКадр №{position}"
+        ),
+        "CORR_INTRO_FAVORITE_ASK": (
+            "1/2. Какой из этих кадров запомнился тебе больше всего?"
+        ),
+        "CORR_INTRO_SKIP_QUESTION_BUTTON": "Пропустить вопрос",
+        "CORR_INTRO_REASON_ASK": (
+            "Почему именно кадр №{position}? Одной фразы достаточно."
+        ),
+        "CORR_INTRO_SKIP_REASON_BUTTON": "Пропустить объяснение",
+        "CORR_INTRO_QUESTION_ASK": (
+            "2/2. Что тебе хочется спросить у человека по ту сторону?"
+        ),
+        "CORR_INTRO_READY": (
+            "Спасибо — всё готово. Я пришлю знакомство, когда второй человек "
+            "закончит отвечать, но в любом случае не позднее чем через 24 часа."
+        ),
+        "CORR_INTRO_REVEAL": (
+            "👋 Пора познакомиться\n\n"
+            "Человек по ту сторону — {name} @{username}."
+        ),
+        "CORR_INTRO_FAVORITE_REASON": (
+            "Из твоих фотографий {name} особенно запомнился кадр №{position}:\n"
+            "«{answer}»"
+        ),
+        "CORR_INTRO_FAVORITE_ONLY": (
+            "Из твоих фотографий {name} особенно запомнился кадр №{position}."
+        ),
+        "CORR_INTRO_QUESTION_FROM": "Вопрос от {name}:\n«{answer}»",
+        "CORR_INTRO_MESSAGE_BUTTON": "Написать {name} →",
+        "CORR_INTRO_ALREADY_DECIDED": "Этот выбор уже сохранён.",
+        "CORR_INTRO_ALREADY_SENT": "Вы уже познакомились 👋",
         "CORR_NOT_YOURS": "Эта кнопка не от твоей переписки.",
         "CORR_LEFT": "Переписка завершена. Партнёр увидит только, что цепочка остановлена.",
         "CORR_REPORTED": "Жалоба отправлена. Цепочка заморожена.",
@@ -588,8 +647,9 @@ STRINGS = {
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
             "📮 New season: visual correspondence\n\n"
-            "For two weeks, I'll randomly connect you with one other person. No names or "
-            "usernames: the pair stays completely anonymous.\n\n"
+            "For two weeks, I'll randomly connect you with one other person. During the "
+            "correspondence, there will be no names or usernames: you'll know each other "
+            "only through photographs.\n\n"
             "On Monday, every pair will receive the same starting point.\n\n"
             "You take turns answering the previous photograph with another photograph. "
             "You may submit a reply immediately, but your partner receives it 6 hours "
@@ -607,13 +667,15 @@ STRINGS = {
         "CORR_JOINED": "You're in 📮 I'll form the pairs on Monday.",
         "CORR_DECLINED": "Got it — you're sitting this season out.",
         "CORR_STARTER": (
-            "📮 Your pair is ready. You will never see each other's names — only photographs.\n\n"
+            "📮 Your pair is ready. Until the correspondence ends, you won't see each "
+            "other's names — only photographs.\n\n"
             "Your starting point:\n“{prompt}”\n\n"
             "You have the first turn. Send one photograph; after that, the chain alternates "
             "until it reaches {target} images."
         ),
         "CORR_WAITER": (
-            "📮 Your pair is ready. You will never see each other's names — only photographs.\n\n"
+            "📮 Your pair is ready. Until the correspondence ends, you won't see each "
+            "other's names — only photographs.\n\n"
             "Your starting point:\n“{prompt}”\n\n"
             "Your unknown partner has the first turn. Their photograph will arrive here "
             "as soon as it is ready. The goal is {target} images."
@@ -663,6 +725,63 @@ STRINGS = {
             "📮 Your chain is already complete ✅\n\n"
             "At the end of the two weeks, I'll send the result of all the photo correspondences."
         ),
+        "CORR_INTRO_OFFER": (
+            "For two weeks, you spoke through photographs. Would you like to meet the "
+            "person on the other side?\n\n"
+            "If you both say yes, I’ll share your Telegram usernames with each other "
+            "and ask you a couple of questions."
+        ),
+        "CORR_INTRO_MEET_BUTTON": "👋 Yes, I’d like to meet",
+        "CORR_INTRO_ANONYMOUS_BUTTON": "🔒 Stay anonymous",
+        "CORR_INTRO_WAITING": "Got it 👋",
+        "CORR_INTRO_STAYED_ANONYMOUS": (
+            "All right — your photo correspondence will remain anonymous."
+        ),
+        "CORR_INTRO_USERNAME_REQUIRED": (
+            "To meet, first add a public Telegram username in your profile settings, "
+            "then tap the button again."
+        ),
+        "CORR_INTRO_MUTUAL": (
+            "You’d both like to meet 👋\n\n"
+            "Before I introduce you, I’ll ask two short questions to make starting the "
+            "conversation easier. You can skip either one — I’ll share your usernames "
+            "in any case."
+        ),
+        "CORR_INTRO_PHOTO_CAPTION": "Photograph #{position}",
+        "CORR_INTRO_PHOTO_FIRST_CAPTION": (
+            "The photographs you received during the correspondence:\n\n"
+            "Photograph #{position}"
+        ),
+        "CORR_INTRO_FAVORITE_ASK": (
+            "1/2. Which of these photographs stayed with you most?"
+        ),
+        "CORR_INTRO_SKIP_QUESTION_BUTTON": "Skip this question",
+        "CORR_INTRO_REASON_ASK": (
+            "Why photograph #{position}? One sentence is enough."
+        ),
+        "CORR_INTRO_SKIP_REASON_BUTTON": "Skip the explanation",
+        "CORR_INTRO_QUESTION_ASK": (
+            "2/2. What would you like to ask the person on the other side?"
+        ),
+        "CORR_INTRO_READY": (
+            "Thank you — you’re all set. I’ll introduce you when the other person "
+            "finishes answering, or within 24 hours at the latest."
+        ),
+        "CORR_INTRO_REVEAL": (
+            "👋 Time to meet\n\n"
+            "The person on the other side is {name} @{username}."
+        ),
+        "CORR_INTRO_FAVORITE_REASON": (
+            "Of your photographs, #{position} stayed with {name} most:\n"
+            "“{answer}”"
+        ),
+        "CORR_INTRO_FAVORITE_ONLY": (
+            "Of your photographs, #{position} stayed with {name} most."
+        ),
+        "CORR_INTRO_QUESTION_FROM": "A question from {name}:\n“{answer}”",
+        "CORR_INTRO_MESSAGE_BUTTON": "Message {name} →",
+        "CORR_INTRO_ALREADY_DECIDED": "That choice has already been saved.",
+        "CORR_INTRO_ALREADY_SENT": "You’ve already been introduced 👋",
         "CORR_NOT_YOURS": "That button does not belong to your correspondence.",
         "CORR_LEFT": "The correspondence has ended. Your partner will only be told that the chain stopped.",
         "CORR_REPORTED": "Report sent. The chain is frozen.",

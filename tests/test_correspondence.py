@@ -53,6 +53,7 @@ class FakeBot:
         self.messages = []
         self.photos = []
         self.photo_sources = []
+        self.media_groups = []
 
     async def send_message(self, chat_id, text, **kwargs):
         self.messages.append((chat_id, text, kwargs))
@@ -62,6 +63,13 @@ class FakeBot:
         self.photo_sources.append(photo)
         self.photos.append((chat_id, kwargs.get("caption", ""), kwargs))
         return SimpleNamespace(photo=[SimpleNamespace(file_id=f"relay-{len(self.photos)}")])
+
+    async def send_media_group(self, chat_id, media, **kwargs):
+        self.media_groups.append((chat_id, list(media), kwargs))
+        return [
+            SimpleNamespace(photo=[SimpleNamespace(file_id=f"album-{index}")])
+            for index, _item in enumerate(media, 1)
+        ]
 
 
 class FailingPhotoBot(FakeBot):
@@ -122,6 +130,48 @@ def photo_update(uid: int):
     return SimpleNamespace(
         effective_user=SimpleNamespace(id=uid), message=msg
     ), msg
+
+
+def intro_callback(uid: int, username: str, data: str):
+    query = FakeQuery(data)
+    return SimpleNamespace(
+        callback_query=query,
+        effective_user=SimpleNamespace(
+            id=uid, first_name=f"Person {uid}", username=username
+        ),
+    ), query
+
+
+def intro_text_update(uid: int, username: str, body: str):
+    replies = []
+
+    async def reply_text(text, **kwargs):
+        replies.append((text, kwargs))
+
+    return SimpleNamespace(
+        effective_user=SimpleNamespace(
+            id=uid, first_name=f"Person {uid}", username=username
+        ),
+        message=SimpleNamespace(
+            text=body,
+            reply_to_message=None,
+            reply_text=reply_text,
+        ),
+    ), replies
+
+
+def completed_pair(season_id: int, start: datetime, tmp_path: Path) -> int:
+    pair_id = db.create_correspondence_pair(
+        season_id, 1, 2, 1, start.isoformat(timespec="seconds")
+    )
+    for position, sender in enumerate((1, 2, 1, 2), 1):
+        path = tmp_path / f"intro-{position}.jpg"
+        path.write_bytes(jpeg_bytes())
+        link = db.add_correspondence_link(
+            pair_id, sender, str(path), start.isoformat(timespec="seconds"), 4
+        )
+        db.set_correspondence_link_file_id(link["id"], f"stored-{position}")
+    return pair_id
 
 
 @pytest.fixture
@@ -248,6 +298,151 @@ def test_seasoncompleted_notifies_only_completed_chain_participants(season):
         assert replies == [
             f"📮 Season #{season_id} completion note: sent 2, failed 0."
         ]
+
+    asyncio.run(scenario())
+
+
+def test_mutual_introduction_collects_optional_icebreakers_and_reveals(season, tmp_path):
+    async def scenario():
+        season_id, start = season
+        db.upsert_user(1, "Person 1", "one")
+        db.upsert_user(2, "Person 2", "two")
+        db.set_user_lang(2, "ru")
+        pair_id = completed_pair(season_id, start, tmp_path)
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+
+        command, replies = text_update(99, "/seasonintroductions")
+        await adm.cmd_seasonintroductions(command, context)
+
+        offers = {
+            uid: text
+            for uid, text, _ in bot.messages
+            if "photograph" in text.lower() or "фотограф" in text.lower()
+        }
+        assert "Would you like to meet" in offers[1]
+        assert "Хотите познакомиться" in offers[2]
+        assert replies == [
+            f"📮 Season #{season_id} introductions: opened 1 pair(s); sent 2, failed 0."
+        ]
+
+        update, query = intro_callback(1, "one", f"corr:intro:{pair_id}:meet")
+        await correspondence.on_callback(update, context)
+        assert query.answers[-1][0] == "Got it 👋"
+        assert bot.media_groups == []
+
+        update, _ = intro_callback(2, "two", f"corr:intro:{pair_id}:meet")
+        await correspondence.on_callback(update, context)
+
+        assert len(bot.media_groups) == 2
+        captions = {
+            uid: [item.caption for item in media]
+            for uid, media, _ in bot.media_groups
+        }
+        assert captions[1] == [
+            "The photographs you received during the correspondence:\n\nPhotograph #2",
+            "Photograph #4",
+        ]
+        assert captions[2] == [
+            "Кадры, которые пришли тебе во время переписки:\n\nКадр №1",
+            "Кадр №3",
+        ]
+
+        update, _ = intro_callback(1, "one", f"corr:introphoto:{pair_id}:2")
+        await correspondence.on_callback(update, context)
+        reason, _ = intro_text_update(1, "one", "The light changed the rhythm.")
+        await usr.on_other(reason, context)
+        question, _ = intro_text_update(1, "one", "Where did you find it?")
+        await usr.on_other(question, context)
+
+        update, _ = intro_callback(2, "two", f"corr:introphoto:{pair_id}:skip")
+        await correspondence.on_callback(update, context)
+        update, _ = intro_callback(2, "two", f"corr:introquestion:{pair_id}:skip")
+        await correspondence.on_callback(update, context)
+
+        reveals = {
+            uid: (text, kwargs)
+            for uid, text, kwargs in bot.messages
+            if "Time to meet" in text or "Пора познакомиться" in text
+        }
+        assert "Person 2 @two" in reveals[1][0]
+        assert "Person 1 @one" in reveals[2][0]
+        assert "кадр №2" in reveals[2][0]
+        assert "The light changed the rhythm." in reveals[2][0]
+        assert "Where did you find it?" in reveals[2][0]
+        assert reveals[1][1]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/two"
+        assert reveals[2][1]["reply_markup"].inline_keyboard[0][0].url == "https://t.me/one"
+
+    asyncio.run(scenario())
+
+
+def test_introduction_requires_a_username_before_opt_in(season, tmp_path):
+    async def scenario():
+        season_id, start = season
+        pair_id = completed_pair(season_id, start, tmp_path)
+        db.offer_correspondence_introduction(pair_id, start.isoformat(timespec="seconds"))
+        update, query = intro_callback(1, None, f"corr:intro:{pair_id}:meet")
+
+        await correspondence.on_callback(update, SimpleNamespace(bot=FakeBot()))
+
+        assert "add a public Telegram username" in query.answers[-1][0]
+        assert db.correspondence_introduction_response(pair_id, 1)["decision"] is None
+
+    asyncio.run(scenario())
+
+
+def test_one_yes_and_one_anonymous_starts_no_questions(season, tmp_path):
+    async def scenario():
+        season_id, start = season
+        db.upsert_user(1, "Person 1", "one")
+        db.upsert_user(2, "Person 2", "two")
+        pair_id = completed_pair(season_id, start, tmp_path)
+        db.offer_correspondence_introduction(pair_id, start.isoformat(timespec="seconds"))
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+
+        update, _ = intro_callback(1, "one", f"corr:intro:{pair_id}:meet")
+        await correspondence.on_callback(update, context)
+        update, query = intro_callback(
+            2, "two", f"corr:intro:{pair_id}:anonymous"
+        )
+        await correspondence.on_callback(update, context)
+
+        assert "will remain anonymous" in query.answers[-1][0]
+        assert db.correspondence_introduction(pair_id)["mutual_at"] is None
+        assert bot.media_groups == []
+
+    asyncio.run(scenario())
+
+
+def test_mutual_introduction_reveals_after_24_hours_without_answers(
+    season, tmp_path, monkeypatch
+):
+    async def scenario():
+        season_id, start = season
+        db.upsert_user(1, "Person 1", "one")
+        db.upsert_user(2, "Person 2", "two")
+        pair_id = completed_pair(season_id, start, tmp_path)
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        db.offer_correspondence_introduction(pair_id, start.isoformat(timespec="seconds"))
+        monkeypatch.setattr(correspondence, "now_local", lambda: start)
+
+        for uid, username in ((1, "one"), (2, "two")):
+            update, _ = intro_callback(uid, username, f"corr:intro:{pair_id}:meet")
+            await correspondence.on_callback(update, context)
+
+        assert not any("Time to meet" in text for _, text, _ in bot.messages)
+        # Consent snapshots exactly the identity that will be shared. A later
+        # profile refresh must not strand an already-mutual introduction.
+        db.update_user_identity(1, "Changed", None)
+        await correspondence.process_introductions(
+            context, start + timedelta(hours=24)
+        )
+        assert sum("Time to meet" in text for _, text, _ in bot.messages) == 2
+        assert any("Person 1 @one" in text for _, text, _ in bot.messages)
+        assert db.pending_correspondence_introduction_response(1) is None
+        assert db.pending_correspondence_introduction_response(2) is None
 
     asyncio.run(scenario())
 
@@ -562,8 +757,10 @@ def test_admin_can_view_pairs_and_message_only_the_awaited_person(season, monkey
 
 
 def test_pair_admin_detail_shows_each_recipient_language(season):
-    season_id, _ = season
-    pair = db.create_correspondence_pair(season_id, 1, 2, 1)
+    season_id, start = season
+    pair = db.create_correspondence_pair(
+        season_id, 1, 2, 1, start.isoformat(timespec="seconds")
+    )
     db.set_user_lang(1, "en")
     db.set_user_lang(2, "ru")
 
