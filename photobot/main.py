@@ -191,6 +191,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("skipday", adm.cmd_skipday))
     app.add_handler(CommandHandler("broadcast", adm.cmd_broadcast))
     app.add_handler(CommandHandler("seasonbroadcast", adm.cmd_seasonbroadcast))
+    app.add_handler(CommandHandler("seasonawaiting", adm.cmd_seasonawaiting))
     app.add_handler(CommandHandler("seasoncompleted", adm.cmd_seasoncompleted))
     app.add_handler(CommandHandler("seasonpublication", adm.cmd_seasonpublication))
     app.add_handler(CommandHandler("seasonpublicationstatus", adm.cmd_seasonpublicationstatus))

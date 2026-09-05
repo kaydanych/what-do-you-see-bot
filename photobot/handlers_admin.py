@@ -71,7 +71,7 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /seasonprompt <EN> | <RU>
 /seasontest <EN> | <RU>
 /seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair  /seasonretry <pair>
-/seasonbroadcast <EN> | <RU>  /seasoncompleted [EN | RU]
+/seasonbroadcast <EN> | <RU>  /seasonawaiting <EN> | <RU>  /seasoncompleted [EN | RU]
 /seasonfinish yes  /seasoncancel yes
 /seasonpublication  /seasonpublicationstatus
 
@@ -1718,6 +1718,41 @@ async def cmd_seasonbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE
     sent, failed = await jobs.send_per_user(context, recipients, text_for)
     await update.message.reply_text(
         f"📮 Season #{season['id']} broadcast: sent {sent}, failed {failed}.\n«{en}»"
+        + (f"\n🇷🇺 «{ru}»" if ru else "")
+    )
+
+
+@admin_only
+async def cmd_seasonawaiting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Message only the people whose photo is currently awaited."""
+    parts = (update.message.text or "").split(None, 1)
+    body = parts[1].strip() if len(parts) > 1 else ""
+    if not body:
+        await update.message.reply_text(
+            "Usage: /seasonawaiting <text>   (or  <English> | <Russian>)\n"
+            "Only the awaited person in each active incomplete pair receives it."
+        )
+        return
+    season = db.latest_correspondence_season()
+    if season is None:
+        await update.message.reply_text("No correspondence season yet.")
+        return
+    en, ru = parse_prompt_line(body)
+    recipients = list(dict.fromkeys(
+        pair["next_tg_id"]
+        for pair in db.correspondence_pairs_for(season["id"])
+        if pair["status"] == "active"
+        and db.correspondence_draft(pair["id"]) is None
+    ))
+
+    def text_for(uid: int) -> str:
+        message = ru if (ru and db.get_user_lang(uid) == "ru") else en
+        return t(db.get_user_lang(uid), "ORGANIZER_MESSAGE", text=message)
+
+    sent, failed = await jobs.send_per_user(context, recipients, text_for)
+    await update.message.reply_text(
+        f"📮 Season #{season['id']} awaiting reminder: "
+        f"sent {sent}, failed {failed}.\n«{en}»"
         + (f"\n🇷🇺 «{ru}»" if ru else "")
     )
 

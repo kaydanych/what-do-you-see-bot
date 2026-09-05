@@ -174,6 +174,57 @@ def test_seasonbroadcast_reaches_only_enrollees_in_their_language(season):
     asyncio.run(scenario())
 
 
+def test_seasonawaiting_reaches_only_each_active_pairs_awaited_person(season, tmp_path):
+    async def scenario():
+        season_id, start = season
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot, user_data={})
+        await correspondence.pair_and_start(context, season_id, start)
+        active_pair = db.correspondence_pairs_for(season_id)[0]
+        awaited = active_pair["next_tg_id"]
+        partner = correspondence.other_user(active_pair, awaited)
+
+        complete_id = db.create_correspondence_pair(
+            season_id, 11, 12, 11, start.isoformat(timespec="seconds")
+        )
+        db.set_correspondence_pair_field(complete_id, "status", "complete")
+        queued_id = db.create_correspondence_pair(
+            season_id, 21, 22, 21, start.isoformat(timespec="seconds")
+        )
+        draft_path = tmp_path / "queued.jpg"
+        draft_path.write_bytes(jpeg_bytes())
+        db.upsert_correspondence_draft(
+            queued_id,
+            21,
+            1,
+            str(draft_path),
+            None,
+            start.isoformat(timespec="seconds"),
+            start.isoformat(timespec="seconds"),
+        )
+
+        db.set_user_lang(awaited, "ru")
+        before = len(bot.messages)
+        update, replies = text_update(
+            99, "/seasonawaiting Two days left | Осталось два дня"
+        )
+        await adm.cmd_seasonawaiting(update, context)
+        sent = bot.messages[before:]
+
+        assert [uid for uid, _, _ in sent] == [awaited]
+        assert "Осталось два дня" in sent[0][1]
+        assert "Сообщение от организатора" in sent[0][1]
+        assert partner not in [uid for uid, _, _ in sent]
+        assert 11 not in [uid for uid, _, _ in sent]
+        assert 21 not in [uid for uid, _, _ in sent]
+        assert replies == [
+            f"📮 Season #{season_id} awaiting reminder: sent 1, failed 0.\n"
+            "«Two days left»\n🇷🇺 «Осталось два дня»"
+        ]
+
+    asyncio.run(scenario())
+
+
 def test_seasoncompleted_notifies_only_completed_chain_participants(season):
     async def scenario():
         season_id, start = season

@@ -347,6 +347,7 @@ happens in the bot chat:
 | `/proofing [key=val…\|on\|off]` | Proofing settings and tonight's state |
 | `/skipday` | Cancel today (no collage, no reminder) |
 | `/broadcast <text>` | Message all active users |
+| `/seasonawaiting <EN> \| <RU>` | Message only the person whose photo is awaited in each active correspondence pair |
 | `/askreminders` | Ask active users whether they want both evening nudges or only the morning prompt |
 | `/kick <id|@username>`, `/unkick` | Remove/restore a user |
 | `/errors` | Last 20 error-log lines |
