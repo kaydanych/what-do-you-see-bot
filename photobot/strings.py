@@ -108,6 +108,18 @@ STRINGS = {
         "KNOCK_NOT_YOURS": "Это только для тех, кто прислал фото в тот день.",
         "POLL_THANKS": "Спасибо! Твой голос учтён.",
         "POLL_CLOSED": "Опрос закрыт — голосование завершено.",
+        "SURVEY_PRIVATE_NOTE": (
+            "Выбери один вариант. Ответ и комментарий увидят только организаторы."
+        ),
+        "SURVEY_RECORDED": "Записал: {position} — {option}",
+        "SURVEY_COMMENT_ASK": (
+            "Если хочешь, отправь следующим сообщением один комментарий — "
+            "я прикреплю его к этому ответу."
+        ),
+        "SURVEY_DONE_BUTTON": "Без комментария",
+        "SURVEY_DONE": "Готово, спасибо!",
+        "SURVEY_COMMENT_SAVED": "Спасибо! Комментарий добавлен к твоему ответу.",
+        "SURVEY_CLOSED": "Этот опрос уже закрыт.",
         "TZ_SUFFIX": "по Берлину",
         "FEEDBACK_ASK": (
             "Напиши свой отзыв следующим сообщением — я передам его организатору 🙏"
@@ -518,6 +530,18 @@ STRINGS = {
         "KNOCK_NOT_YOURS": "This is for the people who sent a photo that day.",
         "POLL_THANKS": "Thanks! Your vote is counted.",
         "POLL_CLOSED": "This poll is closed — voting has ended.",
+        "SURVEY_PRIVATE_NOTE": (
+            "Choose one option. Only the organizers will see your answer and comment."
+        ),
+        "SURVEY_RECORDED": "Recorded: {position} — {option}",
+        "SURVEY_COMMENT_ASK": (
+            "If you'd like, send one comment as your next message and I'll attach "
+            "it to this answer."
+        ),
+        "SURVEY_DONE_BUTTON": "No comment",
+        "SURVEY_DONE": "Done—thank you!",
+        "SURVEY_COMMENT_SAVED": "Thank you! Your comment was added to your answer.",
+        "SURVEY_CLOSED": "This survey is already closed.",
         "TZ_SUFFIX": "Berlin time",
         "FEEDBACK_ASK": (
             "Send your feedback as your next message — I'll pass it on to the organizer 🙏"

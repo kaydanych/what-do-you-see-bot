@@ -104,6 +104,38 @@ The page can be refreshed the following weekend, while active chains remain
 open until the organizer finishes the season. `/seasonpublicationstatus` shows
 aggregate eligibility.
 
+After the finale, `/seasonintroductions` gives both people in every completed
+chain a private choice to meet. Nothing else happens unless both opt in. Once
+they do, the bot shows each person the photographs they received, asks two
+optional icebreaker questions, and exchanges names, Telegram usernames and
+answers when both finish or after 24 hours. This does not identify either
+person on the shared page.
+
+### Private follow-up surveys
+
+Reusable surveys collect a numbered answer plus one optional following text
+message without exposing live tallies to participants. Build one as a draft,
+then send it either to the latest correspondence season's paired participants
+or to all active users:
+
+```text
+/surveynew Would you join another visual-correspondence season? | Хотели бы вы участвовать ещё в одном сезоне визуальной переписки?
+/surveyoption 1 Definitely | Точно
+/surveyoption 1 Maybe, with changes | Возможно, но с изменениями
+/surveyoption 1 Glad I tried, but not again | Рад(а), что попробовал(а), но больше не хочу
+/surveyoption 1 I haven't viewed the final page | Я ещё не смотрел(а) итоговую страницу
+/surveysend 1 season
+```
+
+The ids in the example are illustrative; `/surveynew` returns the real id.
+`/surveysend <id> season [season-id]` defaults to the latest season, while
+`/surveysend <id> active` targets the whole active circle. Use
+`/surveyresults <id>` for private grouped results and comments, then
+`/surveyclose <id>` to stop responses. A selected answer may be changed while
+the survey is open. The optional-comment state survives restarts, expires after
+24 hours, and is cancelled by a command or photo so unrelated messages are not
+captured.
+
 ## A day in the life
 
 | | |
@@ -216,7 +248,7 @@ Tests: `.venv/bin/python -m pytest tests/`
 | `/stats` · `/users` · `/feedback_all` | who's playing, what they think |
 | `/weekcard` · `/weekcards` | Sunday's week cards — who qualifies, what they chose |
 | `/seasoncreate` · `/seasonprompt` · `/seasonstatus` | schedule, set the opening prompt, and inspect a correspondence season |
-| `/seasontest` · `/seasonpair` · `/seasonbroadcast` · `/seasonawaiting` · `/seasoncompleted [EN \| RU]` · `/seasoncancel yes` | rehearse, pair, message the season or only awaited people, notify completed chains, or close it |
+| `/seasontest` · `/seasonpair` · `/seasonbroadcast` · `/seasonawaiting` · `/seasoncompleted [EN \| RU]` · `/seasonintroductions` · `/seasoncancel yes` | rehearse, pair, message the season or only awaited people, notify or introduce completed chains, or close it |
 | `/errors` · `/version` | last log lines, which build is running |
 
 Every crash is DM'd to the admins with a traceback, and a tick job every minute

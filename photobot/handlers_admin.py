@@ -25,7 +25,7 @@ ADMIN_HELP = """🛠 Admin
 
 📅 /status  /pending  /preview
 🖼 /photos  /knocks  /stories  /proofing
-📝 /prompts  /suggestions  /polls
+📝 /prompts  /suggestions  /polls  /surveys
 👥 /users  /stats  /feedback_all
 🗓 /times  /weekcard  /weekcards
 ⚙️ /errors  /version
@@ -60,6 +60,14 @@ ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
 /pollresults <id>
 /polledit <id> <EN> | <RU>
 /pollclose <id>
+
+🔒 Private surveys
+/surveys
+/surveynew <EN question> | <RU question>
+/surveyoption <id> <EN option> | <RU option>
+/surveysend <id> [season [season-id] | active]
+/surveyresults <id>
+/surveyclose <id>
 
 🗓 Day
 /times
@@ -1946,6 +1954,224 @@ def _parse_poll_id(arg: str) -> int | None:
         return int(arg)
     except (TypeError, ValueError):
         return None
+
+
+@admin_only
+async def cmd_surveynew(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    parts = (update.message.text or "").split(None, 1)
+    body = parts[1].strip() if len(parts) > 1 else ""
+    if not body:
+        await update.message.reply_text(
+            "Usage: /surveynew <English question> | <Russian question>"
+        )
+        return
+    en, ru = parse_prompt_line(body)
+    survey_id = db.create_survey(en, ru, update.effective_user.id)
+    await update.message.reply_text(
+        f"🔒 Draft survey #{survey_id}\n«{en}»"
+        + (f"\n🇷🇺 «{ru}»" if ru else "")
+        + f"\n\nAdd 2–8 choices with:\n/surveyoption {survey_id} <EN> | <RU>"
+    )
+
+
+@admin_only
+async def cmd_surveyoption(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    parts = (update.message.text or "").split(None, 2)
+    survey_id = _parse_poll_id(parts[1]) if len(parts) >= 2 else None
+    if survey_id is None or len(parts) < 3:
+        await update.message.reply_text(
+            "Usage: /surveyoption <id> <English option> | <Russian option>"
+        )
+        return
+    survey = db.get_survey(survey_id)
+    if survey is None:
+        await update.message.reply_text(f"No survey #{survey_id}.")
+        return
+    options = db.survey_options(survey_id)
+    if survey["status"] != "draft":
+        await update.message.reply_text("Options can only be added before sending.")
+        return
+    if len(options) >= 8:
+        await update.message.reply_text("A survey can have at most 8 options.")
+        return
+    en, ru = parse_prompt_line(parts[2].strip())
+    db.add_survey_option(survey_id, en, ru)
+    position = len(options) + 1
+    await update.message.reply_text(
+        f"Added {position} — {en}"
+        + (f" / {ru}" if ru else "")
+        + f"\n\nAdd another, or send:\n/surveysend {survey_id} season"
+    )
+
+
+@admin_only
+async def cmd_surveys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    surveys = db.list_surveys()
+    if not surveys:
+        await update.message.reply_text(
+            "No private surveys yet. Create one with /surveynew <EN> | <RU>."
+        )
+        return
+    lines = ["🔒 Private surveys (newest first):"]
+    for survey in surveys:
+        responses = db.survey_response_details(survey["id"])
+        sent = len(db.survey_messages_for(survey["id"]))
+        options = len(db.survey_options(survey["id"]))
+        marker = {"draft": "📝", "open": "🟢", "closed": "🔒"}.get(
+            survey["status"], "?"
+        )
+        question = survey["question"]
+        if len(question) > 55:
+            question = question[:52] + "…"
+        lines.append(
+            f"{marker} #{survey['id']} · {options} option(s) · "
+            f"{len(responses)}/{sent} answered · «{question}»"
+        )
+    await update.message.reply_text("\n".join(lines))
+
+
+@admin_only
+async def cmd_surveysend(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args
+    survey_id = _parse_poll_id(args[0]) if args else None
+    if survey_id is None:
+        await update.message.reply_text(
+            "Usage: /surveysend <id> season [season-id]\n"
+            "   or: /surveysend <id> active"
+        )
+        return
+    survey = db.get_survey(survey_id)
+    if survey is None:
+        await update.message.reply_text(f"No survey #{survey_id}.")
+        return
+    if survey["status"] == "closed":
+        await update.message.reply_text(f"Survey #{survey_id} is already closed.")
+        return
+    options = db.survey_options(survey_id)
+    if not 2 <= len(options) <= 8:
+        await update.message.reply_text(
+            f"Survey #{survey_id} needs 2–8 options; it currently has {len(options)}."
+        )
+        return
+
+    target = (
+        args[1].lower()
+        if len(args) >= 2
+        else (survey["target_type"] or "season")
+    )
+    target_id = None
+    if target == "active":
+        recipients = db.active_user_ids()
+    elif target == "season":
+        if len(args) >= 3:
+            target_id = _parse_poll_id(args[2])
+            season = db.get_correspondence_season(target_id) if target_id else None
+        elif survey["status"] == "open":
+            target_id = survey["target_id"]
+            season = db.get_correspondence_season(target_id) if target_id else None
+        else:
+            season = db.latest_correspondence_season()
+            target_id = season["id"] if season else None
+        if season is None:
+            await update.message.reply_text("No matching correspondence season.")
+            return
+        recipients = db.correspondence_participant_ids(target_id)
+    else:
+        await update.message.reply_text("Target must be `season` or `active`.")
+        return
+    if not recipients:
+        await update.message.reply_text("That audience has no recipients.")
+        return
+
+    if survey["status"] == "open" and (
+        target != survey["target_type"] or target_id != survey["target_id"]
+    ):
+        await update.message.reply_text(
+            "An open survey can only be retried for its original audience."
+        )
+        return
+
+    if survey["status"] == "draft":
+        db.open_survey(survey_id, target, target_id)
+    survey = db.get_survey(survey_id)
+    already_sent = set(db.survey_recipient_ids(survey_id))
+    remaining = [uid for uid in recipients if uid not in already_sent]
+    if not remaining:
+        await update.message.reply_text(
+            f"Survey #{survey_id} has already reached all {len(recipients)} recipients."
+        )
+        return
+    sent, failed = await jobs.send_survey(context, survey, remaining)
+    delivered = len(db.survey_recipient_ids(survey_id))
+    target_label = f"season #{target_id}" if target == "season" else "all active users"
+    await update.message.reply_text(
+        f"🔒 Survey #{survey_id} delivered privately to {delivered}/{len(recipients)} "
+        f"participant(s) in {target_label} ({failed} failed this attempt).\n"
+        f"Results: /surveyresults {survey_id}\nClose: /surveyclose {survey_id}"
+    )
+
+
+@admin_only
+async def cmd_surveyresults(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    survey_id = _parse_poll_id(context.args[0]) if context.args else None
+    if survey_id is None:
+        await update.message.reply_text("Usage: /surveyresults <id>")
+        return
+    survey = db.get_survey(survey_id)
+    if survey is None:
+        await update.message.reply_text(f"No survey #{survey_id}.")
+        return
+    options = db.survey_options(survey_id)
+    responses = db.survey_response_details(survey_id)
+    sent = len(db.survey_messages_for(survey_id))
+    counts = {option["id"]: 0 for option in options}
+    for response in responses:
+        counts[response["option_id"]] += 1
+    lines = [
+        f"🔒 Survey #{survey_id} ({survey['status']})",
+        f"«{survey['question']}»",
+        f"{len(responses)}/{sent} answered",
+        "",
+    ]
+    for option in options:
+        lines.append(f"{option['position']} — {option['text']}: {counts[option['id']]}")
+    comments = [response for response in responses if response["comment"]]
+    if comments:
+        lines.extend(["", "Comments:"])
+        for response in comments:
+            name = response["first_name"] or str(response["tg_id"])
+            username = f" @{response['username']}" if response["username"] else ""
+            lines.append(
+                f"[{response['position']}] {name}{username} (id {response['tg_id']}): "
+                f"{response['comment']}"
+            )
+    text = "\n".join(lines)
+    for start in range(0, len(text), 3800):
+        await update.message.reply_text(text[start : start + 3800])
+
+
+@admin_only
+async def cmd_surveyclose(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    survey_id = _parse_poll_id(context.args[0]) if context.args else None
+    if survey_id is None:
+        await update.message.reply_text("Usage: /surveyclose <id>")
+        return
+    survey = db.get_survey(survey_id)
+    if survey is None:
+        await update.message.reply_text(f"No survey #{survey_id}.")
+        return
+    if survey["status"] == "closed":
+        await update.message.reply_text(f"Survey #{survey_id} is already closed.")
+        return
+    db.close_survey(survey_id)
+    for row in db.survey_messages_for(survey_id):
+        try:
+            await context.bot.edit_message_reply_markup(
+                chat_id=row["tg_id"], message_id=row["message_id"], reply_markup=None
+            )
+        except Exception:
+            log.debug("survey close markup update failed for %s/%s", survey_id, row["tg_id"])
+    await update.message.reply_text(f"🔒 Survey #{survey_id} closed.")
 
 
 @admin_only

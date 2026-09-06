@@ -447,6 +447,14 @@ week_card_messages (week_end, card_tg_id, tg_id, message_id, -- copies for live 
          PRIMARY KEY (week_end, card_tg_id, tg_id))
 feedback    (id PK, tg_id, text, created_at)
 suggestions (id PK, tg_id, text, status TEXT, created_at)    -- pending|approved|dismissed
+surveys (id PK, question, question_ru, status, target_type, target_id,
+         created_by, created_at, sent_at, closed_at)          -- draft|open|closed
+survey_options (id PK, survey_id, position, text, text_ru)
+survey_responses (survey_id, tg_id, option_id, comment, selected_at,
+         comment_at, comment_pending, comment_requested_at,
+         PRIMARY KEY (survey_id, tg_id))
+survey_messages (survey_id, tg_id, message_id,
+         PRIMARY KEY (survey_id, tg_id))
 ```
 
 ## 11a. "Knock, knock" — the group picks the story of the day
@@ -506,6 +514,14 @@ is now `crc32`.
   and live. Emoji-only labels keep one keyboard valid for both languages.
 - **/feedback <text>** — stored in `feedback` and forwarded to the admins.
   Mentioned in the welcome and /help texts only; the bot never nags for it.
+- **Private multi-option surveys** — an admin builds a bilingual draft with
+  `/surveynew` and `/surveyoption`, then sends it to one correspondence
+  season's paired participants or the active circle. Each inline button stores
+  a private numbered choice; no tally is shown to participants. The bot then
+  offers one optional following text comment or a “no comment” button. That
+  pending association is durable, expires after 24 hours, and is cancelled by
+  a command or photo. `/surveyresults` groups counts and attributed comments
+  for admins; `/surveyclose` removes the choice keyboards and ends capture.
 - **/suggest_prompt <idea>** — stored in `suggestions`, admins get a DM with
   `/approve <id> [en | ru]` / `/dismiss <id>` (plus `/suggestions` to list
   pending). Approving inserts a prompt with `source='suggestion'` and

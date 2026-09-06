@@ -113,6 +113,45 @@ CREATE TABLE IF NOT EXISTS poll_messages (
     message_id INTEGER NOT NULL,
     PRIMARY KEY (poll_id, tg_id)
 );
+-- Private multi-option surveys. Unlike the public up/down polls, these keep
+-- each choice and optional follow-up comment visible only to admins.
+CREATE TABLE IF NOT EXISTS surveys (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    question    TEXT NOT NULL,
+    question_ru TEXT,
+    status      TEXT NOT NULL DEFAULT 'draft', -- draft | open | closed
+    target_type TEXT,                          -- active | season
+    target_id   INTEGER,                       -- season id when target_type=season
+    created_by  INTEGER,
+    created_at  TEXT,
+    sent_at     TEXT,
+    closed_at   TEXT
+);
+CREATE TABLE IF NOT EXISTS survey_options (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    survey_id   INTEGER NOT NULL,
+    position    INTEGER NOT NULL,
+    text        TEXT NOT NULL,
+    text_ru     TEXT,
+    UNIQUE(survey_id, position)
+);
+CREATE TABLE IF NOT EXISTS survey_responses (
+    survey_id           INTEGER NOT NULL,
+    tg_id                INTEGER NOT NULL,
+    option_id            INTEGER NOT NULL,
+    comment              TEXT,
+    selected_at          TEXT NOT NULL,
+    comment_at           TEXT,
+    comment_pending      INTEGER NOT NULL DEFAULT 1,
+    comment_requested_at TEXT,
+    PRIMARY KEY (survey_id, tg_id)
+);
+CREATE TABLE IF NOT EXISTS survey_messages (
+    survey_id  INTEGER NOT NULL,
+    tg_id      INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    PRIMARY KEY (survey_id, tg_id)
+);
 -- "Story of the day": the admin asks the author of one past photo why they
 -- chose it; the author's reply is captured here and later published (with their
 -- name — this is opt-in deanonymization) to that day's submitters.
@@ -972,6 +1011,205 @@ def poll_messages_for(poll_id: int) -> list[sqlite3.Row]:
     ).fetchall()
 
 
+# --- private multi-option surveys -------------------------------------------
+
+def create_survey(question: str, question_ru: str | None, created_by: int) -> int:
+    return _exec(
+        "INSERT INTO surveys(question, question_ru, created_by, created_at) "
+        "VALUES(?, ?, ?, ?)",
+        (
+            question.strip(),
+            question_ru.strip() if question_ru else None,
+            created_by,
+            _now(),
+        ),
+    ).lastrowid
+
+
+def get_survey(survey_id: int) -> sqlite3.Row | None:
+    return _exec("SELECT * FROM surveys WHERE id=?", (survey_id,)).fetchone()
+
+
+def list_surveys() -> list[sqlite3.Row]:
+    return _exec("SELECT * FROM surveys ORDER BY id DESC").fetchall()
+
+
+def add_survey_option(
+    survey_id: int, text: str, text_ru: str | None = None
+) -> int:
+    survey = get_survey(survey_id)
+    if survey is None or survey["status"] != "draft":
+        raise ValueError("options can only be added to a draft survey")
+    row = _exec(
+        "SELECT COALESCE(MAX(position), 0) AS n FROM survey_options WHERE survey_id=?",
+        (survey_id,),
+    ).fetchone()
+    position = row["n"] + 1
+    return _exec(
+        "INSERT INTO survey_options(survey_id, position, text, text_ru) "
+        "VALUES(?, ?, ?, ?)",
+        (
+            survey_id,
+            position,
+            text.strip(),
+            text_ru.strip() if text_ru else None,
+        ),
+    ).lastrowid
+
+
+def survey_options(survey_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM survey_options WHERE survey_id=? ORDER BY position",
+        (survey_id,),
+    ).fetchall()
+
+
+def open_survey(survey_id: int, target_type: str, target_id: int | None) -> None:
+    if target_type not in {"active", "season"}:
+        raise ValueError("survey target must be active or season")
+    _exec(
+        "UPDATE surveys SET status='open', target_type=?, target_id=?, sent_at=? "
+        "WHERE id=? AND status='draft'",
+        (target_type, target_id, _now(), survey_id),
+    )
+
+
+def close_survey(survey_id: int) -> None:
+    _exec(
+        "UPDATE surveys SET status='closed', closed_at=? WHERE id=?",
+        (_now(), survey_id),
+    )
+    _exec(
+        "UPDATE survey_responses SET comment_pending=0 WHERE survey_id=?",
+        (survey_id,),
+    )
+
+
+def add_survey_message(survey_id: int, tg_id: int, message_id: int) -> None:
+    _exec(
+        "INSERT INTO survey_messages(survey_id, tg_id, message_id) VALUES(?, ?, ?) "
+        "ON CONFLICT(survey_id, tg_id) DO UPDATE SET message_id=excluded.message_id",
+        (survey_id, tg_id, message_id),
+    )
+
+
+def survey_messages_for(survey_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM survey_messages WHERE survey_id=? ORDER BY tg_id",
+        (survey_id,),
+    ).fetchall()
+
+
+def survey_recipient_ids(survey_id: int) -> list[int]:
+    return [row["tg_id"] for row in survey_messages_for(survey_id)]
+
+
+def survey_was_sent_to(survey_id: int, tg_id: int) -> bool:
+    return _exec(
+        "SELECT 1 FROM survey_messages WHERE survey_id=? AND tg_id=?",
+        (survey_id, tg_id),
+    ).fetchone() is not None
+
+
+def survey_response(survey_id: int, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM survey_responses WHERE survey_id=? AND tg_id=?",
+        (survey_id, tg_id),
+    ).fetchone()
+
+
+def set_survey_choice(survey_id: int, tg_id: int, option_id: int) -> bool:
+    """Store/update a private choice and arm one optional follow-up comment.
+
+    Returns whether a new comment prompt should be sent. Repeated taps while a
+    prompt is already pending remain quiet; tapping after Done or after a saved
+    comment deliberately opens one new opportunity to explain the changed vote.
+    """
+    option = _exec(
+        "SELECT 1 FROM survey_options WHERE id=? AND survey_id=?",
+        (option_id, survey_id),
+    ).fetchone()
+    if option is None:
+        raise ValueError("option does not belong to survey")
+    # Only the most recently touched survey may own the user's next text.
+    _exec(
+        "UPDATE survey_responses SET comment_pending=0 "
+        "WHERE tg_id=? AND survey_id<>? AND comment_pending=1",
+        (tg_id, survey_id),
+    )
+    previous = survey_response(survey_id, tg_id)
+    now = _now()
+    prompt = (
+        previous is None
+        or previous["option_id"] != option_id
+        or not previous["comment_pending"]
+    )
+    _exec(
+        "INSERT INTO survey_responses("
+        "survey_id, tg_id, option_id, selected_at, comment_pending, comment_requested_at"
+        ") VALUES(?, ?, ?, ?, 1, ?) "
+        "ON CONFLICT(survey_id, tg_id) DO UPDATE SET "
+        "option_id=excluded.option_id, selected_at=excluded.selected_at, "
+        "comment_pending=1, comment_requested_at=excluded.comment_requested_at",
+        (survey_id, tg_id, option_id, now, now),
+    )
+    return prompt
+
+
+def pending_survey_response(tg_id: int, max_age_hours: int = 24) -> sqlite3.Row | None:
+    row = _exec(
+        "SELECT r.*, s.status AS survey_status FROM survey_responses r "
+        "JOIN surveys s ON s.id=r.survey_id "
+        "WHERE r.tg_id=? AND r.comment_pending=1 AND s.status='open' "
+        "ORDER BY r.comment_requested_at DESC LIMIT 1",
+        (tg_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    requested = datetime.fromisoformat(row["comment_requested_at"])
+    if datetime.now(config.TZ) - requested > timedelta(hours=max_age_hours):
+        finish_survey_comment(row["survey_id"], tg_id)
+        return None
+    return row
+
+
+def set_survey_comment(survey_id: int, tg_id: int, comment: str) -> bool:
+    cur = _exec(
+        "UPDATE survey_responses SET comment=?, comment_at=?, comment_pending=0 "
+        "WHERE survey_id=? AND tg_id=? AND comment_pending=1",
+        (comment.strip(), _now(), survey_id, tg_id),
+    )
+    return cur.rowcount > 0
+
+
+def finish_survey_comment(survey_id: int, tg_id: int) -> bool:
+    cur = _exec(
+        "UPDATE survey_responses SET comment_pending=0 "
+        "WHERE survey_id=? AND tg_id=? AND comment_pending=1",
+        (survey_id, tg_id),
+    )
+    return cur.rowcount > 0
+
+
+def clear_pending_survey_comments(tg_id: int) -> None:
+    _exec(
+        "UPDATE survey_responses SET comment_pending=0 "
+        "WHERE tg_id=? AND comment_pending=1",
+        (tg_id,),
+    )
+
+
+def survey_response_details(survey_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT r.*, o.position, o.text AS option_text, o.text_ru AS option_text_ru, "
+        "u.first_name, u.username FROM survey_responses r "
+        "JOIN survey_options o ON o.id=r.option_id "
+        "LEFT JOIN users u ON u.tg_id=r.tg_id "
+        "WHERE r.survey_id=? ORDER BY o.position, r.selected_at",
+        (survey_id,),
+    ).fetchall()
+
+
 # --- feedback & suggestions ---------------------------------------------------
 
 def add_feedback(tg_id: int, text: str) -> int:
@@ -1518,6 +1756,14 @@ def correspondence_pairs_for(season_id: int) -> list[sqlite3.Row]:
         "SELECT * FROM correspondence_pairs WHERE season_id=? ORDER BY id",
         (season_id,),
     ).fetchall()
+
+
+def correspondence_participant_ids(season_id: int) -> list[int]:
+    """Every person who was paired in a season, once each."""
+    rows = correspondence_pairs_for(season_id)
+    return list(
+        dict.fromkeys(uid for row in rows for uid in (row["user_a"], row["user_b"]))
+    )
 
 
 def completed_correspondence_user_ids(season_id: int) -> list[int]:

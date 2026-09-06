@@ -52,7 +52,8 @@ def test_full_shortcuts_list_every_admin_command_once():
         "seasonstatus", "seasontest", "seasonfinish", "seasonintroductions", "seasonpublication",
         "seasonpublicationstatus",
         "shortcuts", "suggestions", "times", "unkick", "users", "version",
-        "weekcard", "weekcards",
+        "weekcard", "weekcards", "surveyclose", "surveynew", "surveyoption",
+        "surveyresults", "surveys", "surveysend",
     }
 
 

@@ -165,6 +165,71 @@ async def send_poll(
     return sent, failed
 
 
+def survey_question(survey, lang: str | None) -> str:
+    question = (
+        survey["question_ru"]
+        if lang == "ru" and survey["question_ru"]
+        else survey["question"]
+    )
+    return f"{question}\n\n{t(lang, 'SURVEY_PRIVATE_NOTE')}"
+
+
+def survey_option_text(option, lang: str | None) -> str:
+    return (
+        option["text_ru"]
+        if lang == "ru" and option["text_ru"]
+        else option["text"]
+    )
+
+
+def survey_keyboard(
+    survey_id: int, lang: str | None, selected_option_id: int | None = None
+) -> InlineKeyboardMarkup:
+    rows = []
+    for option in db.survey_options(survey_id):
+        marker = "✓ " if option["id"] == selected_option_id else ""
+        label = f"{marker}{option['position']} — {survey_option_text(option, lang)}"
+        rows.append(
+            [InlineKeyboardButton(label, callback_data=f"survey:{survey_id}:{option['id']}")]
+        )
+    return InlineKeyboardMarkup(rows)
+
+
+def survey_done_keyboard(survey_id: int, lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [[
+            InlineKeyboardButton(
+                t(lang, "SURVEY_DONE_BUTTON"),
+                callback_data=f"surveydone:{survey_id}",
+            )
+        ]]
+    )
+
+
+async def send_survey(
+    context: ContextTypes.DEFAULT_TYPE, survey, recipients: list[int]
+) -> tuple[int, int]:
+    """Send a private survey without exposing aggregate counts to recipients."""
+    sent = failed = 0
+    for uid in recipients:
+        lang = db.get_user_lang(uid)
+        try:
+            msg = await context.bot.send_message(
+                uid,
+                survey_question(survey, lang),
+                reply_markup=survey_keyboard(survey["id"], lang),
+            )
+            db.add_survey_message(survey["id"], uid, msg.message_id)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(uid, "inactive")
+            failed += 1
+        except Exception:
+            log.exception("survey %s send to %s failed", survey["id"], uid)
+            failed += 1
+    return sent, failed
+
+
 def prompt_text(prompt, lang: str | None) -> str:
     """Prompt in the user's language; English text is the primary/fallback."""
     if lang == "ru" and prompt["text_ru"]:

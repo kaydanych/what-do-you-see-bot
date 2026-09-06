@@ -603,6 +603,72 @@ async def on_poll_vote(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             log.debug("poll keyboard update failed for %s/%s", row["tg_id"], poll_id)
 
 
+async def on_survey_choice(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Store a private multi-option answer and invite one optional comment."""
+    query = update.callback_query
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+    try:
+        _, survey_s, option_s = query.data.split(":", 2)
+        survey_id, option_id = int(survey_s), int(option_s)
+    except (AttributeError, TypeError, ValueError):
+        await _answer(query)
+        return
+    survey = db.get_survey(survey_id)
+    options = {row["id"]: row for row in db.survey_options(survey_id)}
+    if (
+        survey is None
+        or survey["status"] != "open"
+        or option_id not in options
+        or not db.survey_was_sent_to(survey_id, uid)
+    ):
+        await _answer(query, t(lang, "SURVEY_CLOSED"))
+        return
+
+    # This is now the user's explicit pending text interaction.
+    context.user_data.pop("awaiting", None)
+    should_prompt = db.set_survey_choice(survey_id, uid, option_id)
+    option = options[option_id]
+    selected = jobs.survey_option_text(option, lang)
+    await _answer(
+        query,
+        t(lang, "SURVEY_RECORDED", position=option["position"], option=selected),
+    )
+    try:
+        await query.edit_message_reply_markup(
+            reply_markup=jobs.survey_keyboard(survey_id, lang, option_id)
+        )
+    except Exception:
+        log.debug("survey choice markup update failed for %s/%s", survey_id, uid)
+    if should_prompt:
+        await context.bot.send_message(
+            uid,
+            t(lang, "SURVEY_RECORDED", position=option["position"], option=selected)
+            + "\n\n"
+            + t(lang, "SURVEY_COMMENT_ASK"),
+            reply_markup=jobs.survey_done_keyboard(survey_id, lang),
+        )
+
+
+async def on_survey_done(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    uid = update.effective_user.id
+    lang = db.get_user_lang(uid)
+    try:
+        survey_id = int(query.data.split(":", 1)[1])
+    except (AttributeError, TypeError, ValueError):
+        await _answer(query)
+        return
+    db.finish_survey_comment(survey_id, uid)
+    await _answer(query, t(lang, "SURVEY_DONE"))
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except Exception:
+        log.debug("survey done markup update failed for %s/%s", survey_id, uid)
+
+
 async def on_proof(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """The pre-publish check: 👍 publishes the collage there and then, 🚫 asks
     for a confirming second tap and only then holds the day."""
@@ -683,6 +749,9 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Photo messages and image documents — the actual submissions."""
     if not await _register(update, context):
         return
+    # A photo starts a different interaction, so it closes any optional survey
+    # comment rather than letting a later unrelated text be captured.
+    db.clear_pending_survey_comments(update.effective_user.id)
     # Correspondence is its own season and remains live while the old daily
     # prompt game is paused. A participant's photo belongs to their active
     # chain before we consider the legacy day.
@@ -765,6 +834,8 @@ async def clear_awaiting(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     Runs in an earlier handler group, so the command it precedes still fires
     (and /feedback / /suggest_prompt re-arm the state right after)."""
     context.user_data.pop("awaiting", None)
+    if update.effective_user is not None:
+        db.clear_pending_survey_comments(update.effective_user.id)
 
 
 async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -798,6 +869,14 @@ async def on_other(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
     if not await _register(update, context):
         return
+    pending_survey = db.pending_survey_response(uid)
+    if pending_survey is not None and update.message.text:
+        text = update.message.text.strip()
+        if text and db.set_survey_comment(pending_survey["survey_id"], uid, text):
+            await update.message.reply_text(
+                t(db.get_user_lang(uid), "SURVEY_COMMENT_SAVED")
+            )
+            return
     # A tapped /feedback or /suggest_prompt, or a held collage, left us waiting
     # for the actual text.
     awaiting = context.user_data.pop("awaiting", None)
