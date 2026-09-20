@@ -247,6 +247,87 @@ STRINGS = {
         "APPROVED": "✅ Тебя впустили — добро пожаловать!",
         "STOPPED": "Ок, больше не буду присылать задания. Захочешь вернуться — /start 👋",
         "KICKED": "Доступ к игре закрыт. Если это ошибка — напиши организатору.",
+        # --- Season 3: returning to one familiar place ---
+        "OBS_INTRO": (
+            "Привет!\n\n"
+            "Я начал новую работу, и сейчас она забирает много моего внимания. "
+            "Но я не хочу, чтобы из-за этого в моей жизни не осталось места для "
+            "того, что я люблю. Поэтому поговорим о третьем сезоне.\n\n"
+            "Сначала мы учились замечать вместе и собирали общие коллажи. Потом "
+            "перешли к камерным диалогам в парах. А теперь пришло время вернуться "
+            "к самим себе.\n\n"
+            "В этом сезоне выбери одно место, которое видишь каждый день. Это "
+            "может быть твой рабочий стол, дерево по дороге на работу, окно, "
+            "содержимое сумки — или даже место внутри себя, куда ты возвращаешься "
+            "изо дня в день.\n\n"
+            "Возвращаясь к нему, попробуй каждый раз заметить что-то новое и "
+            "поймать это в фотографии. Можно присылать по одному снимку в день, "
+            "но не обязательно делать это ежедневно: 10–15 фотографий за сезон "
+            "будет вполне достаточно.\n\n"
+            "Мы будем возвращаться к своим местам четыре недели. А в конце я "
+            "соберу что-то из того, что нам удалось увидеть.\n\n"
+            "Начинаем {start_date}. Ты уже участвуешь. Если в этот раз хочется "
+            "пропустить сезон, нажми кнопку ниже — вернуться можно будет в любой момент."
+        ),
+        "OBS_INTRO_LATE": (
+            "Третий сезон уже начался, но присоединиться можно прямо сегодня — "
+            "ничего навёрстывать не нужно.\n\n"
+            "Выбери одно знакомое место, к которому можешь возвращаться: стол, "
+            "дерево по дороге, окно, содержимое сумки или даже место внутри себя. "
+            "Каждый раз замечай в нём что-то новое и присылай одну фотографию. "
+            "Сезон длится четыре недели; 10–15 снимков будет вполне достаточно."
+        ),
+        "OBS_START": (
+            "Третий сезон начинается сегодня 🌿\n\n"
+            "Выбери своё место и пришли первую фотографию, когда заметишь в нём "
+            "что-то новое. Спешить не нужно."
+        ),
+        "OBS_OPT_OUT_BUTTON": "Пропустить этот сезон",
+        "OBS_REJOIN_BUTTON": "Вернуться в сезон",
+        "OBS_MUTE_BUTTON": "Не напоминать",
+        "OBS_UNMUTE_BUTTON": "Включить напоминания",
+        "OBS_OPTED_OUT": (
+            "Хорошо, в этом сезоне я не буду присылать тебе напоминания. Это не "
+            "отписывает тебя от бота, и вернуться можно в любой момент."
+        ),
+        "OBS_REJOINED": "С возвращением 🌿 Можно присылать следующую фотографию.",
+        "OBS_REJOIN_RESEND": (
+            "Ты решил(а) пропустить этот сезон. Хочешь вернуться? Нажми кнопку, "
+            "а затем пришли фотографию ещё раз."
+        ),
+        "OBS_REMINDERS_MUTED": "Готово — напоминаний об этом сезоне больше не будет.",
+        "OBS_REMINDERS_UNMUTED": "Готово — мягкие напоминания снова включены.",
+        "OBS_REMINDER": (
+            "Небольшое напоминание о твоём месте 🌿\n\n"
+            "Если сегодня в нём заметится что-то новое, пришли фотографию. "
+            "Если нет — ничего страшного."
+        ),
+        "OBS_ACCEPTED": "Снимок №{count} сохранён. Спасибо, что посмотрел(а) ещё раз 🌿",
+        "OBS_REPLACED": "Заменил сегодняшний снимок на новый ✅",
+        "OBS_ALBUM_ONE": "Из альбома я сохранил только первую фотографию.",
+        "OBS_STATUS_ACTIVE": (
+            "Третий сезон идёт: у меня {count} твоих фото. Последний снимок: "
+            "{last_date}. Напоминания: {reminders}."
+        ),
+        "OBS_STATUS_ANNOUNCED": "Третий сезон начнётся {start_date}. Ты уже участвуешь.",
+        "OBS_STATUS_OUT": "Ты пропускаешь третий сезон. Вернуться можно кнопкой ниже.",
+        "OBS_STATUS_NONE": "Сейчас нет открытого сезона.",
+        "OBS_REMINDERS_ON": "включены",
+        "OBS_REMINDERS_OFF": "выключены",
+        "OBS_NO_PHOTOS": "пока нет",
+        "OBS_HELP": (
+            "Третий сезон — четыре недели наблюдения за одним знакомым местом. "
+            "Можно присылать по одной фотографии в день; новое фото в тот же день "
+            "заменит предыдущее.\n\n"
+            "/season — статус, количество снимков и напоминания\n"
+            "/feedback — написать организатору\n"
+            "/lang — сменить язык\n"
+            "/stop — полностью отписаться от бота"
+        ),
+        "OBS_FINISHED": (
+            "Третий сезон завершён. Спасибо, что возвращался(ась), смотрел(а) и "
+            "делился(ась) своим местом 🌿"
+        ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
             "📮 Новый сезон: визуальная переписка\n\n"
@@ -668,6 +749,85 @@ STRINGS = {
         "APPROVED": "✅ You're in — welcome!",
         "STOPPED": "OK, no more challenges from me. Come back anytime with /start 👋",
         "KICKED": "Access to the game is closed. If this is a mistake, contact the organizer.",
+        # --- Season 3: returning to one familiar place ---
+        "OBS_INTRO": (
+            "Hi, it’s been a while.\n\n"
+            "I started a new job, and it’s taking a lot of my attention. But I "
+            "don’t want that to stop me from doing the things I love. So—let’s "
+            "talk about Season 3.\n\n"
+            "We began by noticing together and making collective collages. Then "
+            "we moved into intimate dialogues between pairs. This time, we’re "
+            "coming back to ourselves.\n\n"
+            "For Season 3, choose one place you see every day. It could be your "
+            "desk, a tree you pass on your commute, a window, the inside of your "
+            "bag—or even a place in your mind that you return to daily.\n\n"
+            "Each time you come back to it, look for something you haven’t noticed "
+            "before and try to catch it in a photograph. You can send one photo a "
+            "day, but you don’t have to do it every day: around 10–15 over the "
+            "season is plenty.\n\n"
+            "We’ll keep returning to our places for four weeks. At the end, I’ll "
+            "make something from what we have seen.\n\n"
+            "We begin on {start_date}. You’re already included. If you’d rather "
+            "sit this season out, use the button below—you can always come back later."
+        ),
+        "OBS_INTRO_LATE": (
+            "Season 3 is already underway, but you can begin today—there is "
+            "nothing to catch up on.\n\n"
+            "Choose one familiar place you can return to: your desk, a tree on "
+            "your way, a window, the inside of your bag, or even a place in your "
+            "mind. Each time, notice something new and send one photograph. The "
+            "season lasts four weeks; around 10–15 photographs is plenty."
+        ),
+        "OBS_START": (
+            "Season 3 begins today 🌿\n\n"
+            "Choose your place and send the first photograph when something new "
+            "catches your eye. There is no need to rush."
+        ),
+        "OBS_OPT_OUT_BUTTON": "Sit this season out",
+        "OBS_REJOIN_BUTTON": "Join the season again",
+        "OBS_MUTE_BUTTON": "Mute reminders",
+        "OBS_UNMUTE_BUTTON": "Turn reminders on",
+        "OBS_OPTED_OUT": (
+            "All right—I won’t send you reminders for this season. This does not "
+            "unsubscribe you from the bot, and you can come back at any time."
+        ),
+        "OBS_REJOINED": "Welcome back 🌿 Send your next photograph whenever you’re ready.",
+        "OBS_REJOIN_RESEND": (
+            "You chose to sit this season out. Want to come back? Tap below, then "
+            "send the photograph once more."
+        ),
+        "OBS_REMINDERS_MUTED": "Done—no more reminders for this season.",
+        "OBS_REMINDERS_UNMUTED": "Done—the gentle reminders are back on.",
+        "OBS_REMINDER": (
+            "A small reminder about your place 🌿\n\n"
+            "If something new catches your eye today, send a photograph. If not, "
+            "that’s completely fine."
+        ),
+        "OBS_ACCEPTED": "Photograph {count} is safe with me. Thank you for looking again 🌿",
+        "OBS_REPLACED": "Replaced today’s photograph with the new one ✅",
+        "OBS_ALBUM_ONE": "I kept only the first photograph from the album.",
+        "OBS_STATUS_ACTIVE": (
+            "Season 3 is underway: I have {count} of your photographs. Last one: "
+            "{last_date}. Reminders: {reminders}."
+        ),
+        "OBS_STATUS_ANNOUNCED": "Season 3 begins on {start_date}. You’re already included.",
+        "OBS_STATUS_OUT": "You’re sitting Season 3 out. You can return with the button below.",
+        "OBS_STATUS_NONE": "There is no open season right now.",
+        "OBS_REMINDERS_ON": "on",
+        "OBS_REMINDERS_OFF": "off",
+        "OBS_NO_PHOTOS": "none yet",
+        "OBS_HELP": (
+            "Season 3 is four weeks of observing one familiar place. You can send "
+            "one photograph a day; another photo on the same day replaces it.\n\n"
+            "/season — status, photo count, and reminders\n"
+            "/feedback — message the organizer\n"
+            "/lang — change language\n"
+            "/stop — unsubscribe from the bot entirely"
+        ),
+        "OBS_FINISHED": (
+            "Season 3 is complete. Thank you for returning, looking, and sharing "
+            "your place 🌿"
+        ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
             "📮 New season: visual correspondence\n\n"

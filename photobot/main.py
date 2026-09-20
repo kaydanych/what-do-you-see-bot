@@ -3,7 +3,13 @@ import logging
 import traceback
 from logging.handlers import RotatingFileHandler
 
-from telegram import LinkPreviewOptions, Update
+from telegram import (
+    BotCommand,
+    BotCommandScopeAllPrivateChats,
+    BotCommandScopeChat,
+    LinkPreviewOptions,
+    Update,
+)
 from telegram.ext import (
     Application,
     ApplicationBuilder,
@@ -24,6 +30,7 @@ from . import (
     handlers_admin as adm,
     handlers_user as usr,
     jobs,
+    observation,
     version,
 )
 
@@ -82,6 +89,42 @@ async def notify_deploy(app: Application) -> None:
     db.set_setting("deployed_commit", commit)
 
 
+async def configure_command_menus(app: Application) -> None:
+    """Keep Telegram's slash menu small; hidden recovery commands still work."""
+    participant = [
+        BotCommand("season", "Season 3 status and settings"),
+        BotCommand("lang", "Change language"),
+        BotCommand("feedback", "Message the organizer"),
+        BotCommand("stop", "Leave the bot"),
+    ]
+    admin = [
+        BotCommand("season_admin", "Season 3 dashboard"),
+        BotCommand("admin", "General admin dashboard"),
+        BotCommand("status", "Current bot status"),
+        BotCommand("pending", "New users awaiting approval"),
+        BotCommand("users", "User list"),
+        BotCommand("dm", "Message one user"),
+        BotCommand("broadcast", "Message all active users"),
+        BotCommand("errors", "Recent errors"),
+        BotCommand("version", "Deployed version"),
+    ]
+    try:
+        await app.bot.set_my_commands(
+            participant, scope=BotCommandScopeAllPrivateChats()
+        )
+        for admin_id in config.ADMIN_IDS:
+            await app.bot.set_my_commands(
+                admin, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+    except Exception:
+        log.exception("failed to configure Telegram command menus")
+
+
+async def on_startup(app: Application) -> None:
+    await notify_deploy(app)
+    await configure_command_menus(app)
+
+
 async def access_gate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """First thing every update hits (group -3). When ALLOWED_USER_IDS is set
     (private/test bot), silently drop anyone not on the list and stop all further
@@ -127,7 +170,7 @@ def build_app() -> Application:
         .read_timeout(20.0)
         .write_timeout(20.0)
         .pool_timeout(5.0)
-        .post_init(notify_deploy)
+        .post_init(on_startup)
         .build()
     )
 
@@ -148,6 +191,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("lang", usr.cmd_lang))
     app.add_handler(CommandHandler("feedback", usr.cmd_feedback))
     app.add_handler(CommandHandler("suggest_prompt", usr.cmd_suggest))
+    app.add_handler(CommandHandler("season", observation.cmd_season))
     app.add_handler(CallbackQueryHandler(usr.on_lang_choice, pattern=r"^lang:"))
     app.add_handler(CallbackQueryHandler(usr.on_reminder_choice, pattern=r"^reminders:"))
     app.add_handler(CallbackQueryHandler(usr.on_rate, pattern=r"^rate:"))
@@ -160,11 +204,20 @@ def build_app() -> Application:
     app.add_handler(CallbackQueryHandler(usr.on_survey_done, pattern=r"^surveydone:"))
     app.add_handler(CallbackQueryHandler(usr.on_proof, pattern=r"^proof:"))
     app.add_handler(CallbackQueryHandler(correspondence.on_callback, pattern=r"^corr:"))
+    app.add_handler(CallbackQueryHandler(observation.on_callback, pattern=r"^obs:"))
     app.add_handler(CallbackQueryHandler(adm.on_correspondence_admin, pattern=r"^corradmin:"))
+    app.add_handler(CallbackQueryHandler(adm.on_observation_admin, pattern=r"^obsadmin:"))
 
     # admin commands
     app.add_handler(CommandHandler("admin", adm.cmd_admin))
     app.add_handler(CommandHandler("shortcuts", adm.cmd_shortcuts))
+    app.add_handler(CommandHandler("season_admin", adm.cmd_season_admin))
+    app.add_handler(CommandHandler("season3announce", adm.cmd_season3announce))
+    app.add_handler(CommandHandler("season3start", adm.cmd_season3start))
+    app.add_handler(CommandHandler("season3people", adm.cmd_season3people))
+    app.add_handler(CommandHandler("season3broadcast", adm.cmd_season3broadcast))
+    app.add_handler(CommandHandler("season3export", adm.cmd_season3export))
+    app.add_handler(CommandHandler("season3finish", adm.cmd_season3finish))
     app.add_handler(CommandHandler("status", adm.cmd_status))
     app.add_handler(CommandHandler("users", adm.cmd_users))
     app.add_handler(CommandHandler("pending", adm.cmd_pending))

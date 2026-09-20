@@ -16,13 +16,14 @@ from telegram import (
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import config, correspondence, db, handlers_user as usr, jobs, version
+from . import config, correspondence, db, handlers_user as usr, jobs, observation, version
 from .strings import t
 
 log = logging.getLogger(__name__)
 
 ADMIN_HELP = """🛠 Admin
 
+🌿 /season_admin — Season 3 dashboard
 📅 /status  /pending  /preview
 🖼 /photos  /knocks  /stories  /proofing
 📝 /prompts  /suggestions  /polls  /surveys
@@ -30,87 +31,7 @@ ADMIN_HELP = """🛠 Admin
 🗓 /times  /weekcard  /weekcards
 ⚙️ /errors  /version
 
-⌨️ /shortcuts — all admin commands"""
-
-
-ADMIN_SHORTCUTS = """⌨️ Admin shortcuts
-
-📊 Overview
-/status  /pending  /users  /stats  /errors  /version
-
-✉️ Messages
-/dm <id|@username> <text>
-/broadcast <EN> | <RU>
-/askreminders
-
-📝 Prompts
-/prompts  /exportprompts
-/addprompt <EN> | <RU>
-/setru <id> <RU>
-/delprompt <id>
-
-💡 Suggestions
-/suggestions  /feedback_all
-/approve <id> [EN | RU]
-/dismiss <id>
-
-📊 Polls
-/polls
-/poll <EN> | <RU>
-/pollresults <id>
-/polledit <id> <EN> | <RU>
-/pollclose <id>
-
-🔒 Private surveys
-/surveys
-/surveynew <EN question> | <RU question>
-/surveyoption <id> <EN option> | <RU option>
-/surveysend <id> [season [season-id] | active]
-/surveyresults <id>
-/surveyclose <id>
-
-🗓 Day
-/times
-/settimes key=value …
-/pause  /resume  /forceprompt  /skipday
-
-📮 Correspondence season
-/seasoncreate <Monday YYYY-MM-DD> [EN | RU]
-/seasonprompt <EN> | <RU>
-/seasontest <EN> | <RU>
-/seasonstatus  /seasonpairs  /seasonpairnames  /seasonpair  /seasonretry <pair>
-/seasonbroadcast <EN> | <RU>  /seasonawaiting <EN> | <RU>
-/seasoncompleted [EN | RU]
-/seasonfinish yes  /seasoncancel yes
-/seasonpublication  /seasonpublicationstatus  /seasonintroductions
-
-🖼 Collage
-/preview
-/exclude <N>  /include <N>  /ban <N>
-/forcecollage [date]
-/delcollage [date]
-
-👀 Proofing
-/proofers [add|remove <user> …]
-/proofer <user>
-/proofing [off|batch=3 round=10 quorum=2]
-
-💬 Stories
-/photos [date]  /knocks [date]
-/askstory [date] <N> | random
-/stories
-/editstory <id> <EN> | <RU>
-/publishstory <id> [day]
-/dismissstory <id>
-
-🗓 Week cards
-/weekcard [send|me|reset] [date]
-/weekcards [date]
-
-👥 Access
-/kick <user>  /unkick <user>
-
-/admin — daily menu  ·  /shortcuts — this list"""
+⌨️ /shortcuts — this dashboard"""
 
 
 # How each user status reads in a list. '⏳' is a newcomer still waiting for a
@@ -148,7 +69,7 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 @admin_only
 async def cmd_shortcuts(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text(ADMIN_SHORTCUTS)
+    await update.message.reply_text(ADMIN_HELP)
 
 
 @admin_only
@@ -162,6 +83,253 @@ async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     await update.message.reply_text(
         f"🏷 {version.describe(info)}\ndeployed {info.get('deployed_at', '?')}"
     )
+
+
+# --- Season 3: repeated observation -----------------------------------------
+
+async def _reply_long(message, text: str) -> None:
+    """Send line-oriented admin reports without crossing Telegram's limit."""
+    chunk = ""
+    for line in text.splitlines():
+        candidate = f"{chunk}\n{line}" if chunk else line
+        if len(candidate) > 3900:
+            await message.reply_text(chunk)
+            chunk = line
+        else:
+            chunk = candidate
+    if chunk:
+        await message.reply_text(chunk)
+
+
+@admin_only
+async def cmd_season_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_observation_season()
+    await update.message.reply_text(
+        observation.status_text(season),
+        reply_markup=observation.admin_keyboard(season),
+    )
+
+
+@admin_only
+async def cmd_season3announce(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Preview, then send, the fixed bilingual Season 3 announcement."""
+    current = db.current_observation_season()
+    raw_date = context.args[0] if context.args else (
+        current["planned_start_date"] if current else None
+    )
+    try:
+        planned = date_cls.fromisoformat(raw_date) if raw_date else None
+    except ValueError:
+        planned = None
+    if planned is None:
+        await update.message.reply_text(
+            "Usage: /season3announce YYYY-MM-DD\n"
+            "Then confirm with: /season3announce YYYY-MM-DD yes"
+        )
+        return
+    if current and current["status"] == "active":
+        await update.message.reply_text(
+            "Season 3 is already active. Open /season_admin for status."
+        )
+        return
+    if current and planned.isoformat() != current["planned_start_date"]:
+        await update.message.reply_text(
+            f"Season 3 was already announced for {current['planned_start_date']}. "
+            "The date cannot be changed by retrying the announcement."
+        )
+        return
+    confirmed = len(context.args) >= 2 and context.args[1].lower() == "yes"
+    if not confirmed:
+        recipients = len(db.active_user_ids()) if current is None else sum(
+            m["status"] == "active" and m["user_status"] == "active"
+            for m in db.observation_members(current["id"])
+        )
+        preview = (
+            f"🌿 Season 3 announcement preview — {recipients} active user(s)\n\n"
+            f"ENGLISH\n{t('en', 'OBS_INTRO', start_date=observation.start_date_label(planned.isoformat(), 'en'))}"
+            f"\n\n———\n\nРУССКИЙ\n{t('ru', 'OBS_INTRO', start_date=observation.start_date_label(planned.isoformat(), 'ru'))}"
+            f"\n\nSend exactly:\n/season3announce {planned.isoformat()} yes"
+        )
+        await update.message.reply_text(preview)
+        return
+    enrolled, sent, failed = await observation.announce(context, planned)
+    season = db.current_observation_season()
+    await update.message.reply_text(
+        f"🌿 Season 3 #{season['id']} announced for {season['planned_start_date']}.\n"
+        f"Newly enrolled: {enrolled} · sent: {sent} · failed/pending retry: {failed}\n\n"
+        "Submissions are still closed. Start manually with /season3start yes."
+    )
+
+
+@admin_only
+async def cmd_season3start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or context.args[0].lower() != "yes":
+        await update.message.reply_text(
+            "This opens Season 3 submissions immediately and starts the 28-day clock.\n"
+            "Confirm with /season3start yes"
+        )
+        return
+    try:
+        season, sent, failed = await observation.start(context)
+    except ValueError as exc:
+        await update.message.reply_text(str(exc))
+        return
+    await update.message.reply_text(
+        f"▶️ Season 3 #{season['id']} is active. Start note: sent {sent}, failed {failed}.\n"
+        f"Planned end: {season['planned_end_date']} (finishing remains manual)."
+    )
+
+
+@admin_only
+async def cmd_season3finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not context.args or context.args[0].lower() != "yes":
+        await update.message.reply_text(
+            "This closes submissions and sends the final note.\n"
+            "Confirm with /season3finish yes"
+        )
+        return
+    try:
+        season, sent, failed = await observation.finish(context)
+    except ValueError as exc:
+        await update.message.reply_text(str(exc))
+        return
+    await update.message.reply_text(
+        f"🏁 Season 3 #{season['id']} finished. Final note: sent {sent}, failed {failed}."
+    )
+
+
+@admin_only
+async def cmd_season3people(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_observation_season() or db.latest_observation_season()
+    if season is None:
+        await update.message.reply_text("No Season 3 yet.")
+        return
+    await _reply_long(update.message, observation.people_text(season["id"]))
+
+
+@admin_only
+async def cmd_season3broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_observation_season()
+    if season is None:
+        await update.message.reply_text("No announced or active Season 3.")
+        return
+    raw = update.message.text.split(maxsplit=1)
+    if len(raw) < 2 or not raw[1].strip():
+        await update.message.reply_text("Usage: /season3broadcast <EN> | <RU>")
+        return
+    en, ru = parse_prompt_line(raw[1])
+    sent = failed = 0
+    for member in db.observation_members(season["id"]):
+        if member["status"] != "active" or member["user_status"] != "active":
+            continue
+        body = ru if member["lang"] == "ru" and ru else en
+        try:
+            await context.bot.send_message(member["tg_id"], body)
+            sent += 1
+        except Forbidden:
+            db.set_user_status(member["tg_id"], "inactive")
+            db.mark_observation_member_field(
+                season["id"], member["tg_id"], "unreachable_at",
+                jobs.now_local().isoformat(timespec="seconds"),
+            )
+            failed += 1
+        except Exception:
+            log.exception("Season 3 broadcast to %s failed", member["tg_id"])
+            failed += 1
+    await update.message.reply_text(
+        f"🌿 Season 3 broadcast: sent {sent}, failed {failed}."
+    )
+
+
+@admin_only
+async def cmd_season3export(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.current_observation_season() or db.latest_observation_season()
+    if season is None:
+        await update.message.reply_text("No Season 3 yet.")
+        return
+    path = config.DATA_DIR / "exports" / f"season3-{season['id']}-manifest.csv"
+    count = observation.export_manifest(season["id"], path)
+    with path.open("rb") as handle:
+        await context.bot.send_document(
+            update.effective_chat.id,
+            handle,
+            caption=(
+                f"Season 3 #{season['id']}: {count} photo(s). Originals stay on the "
+                f"NAS under data/photos/season3-{season['id']}/."
+            ),
+        )
+
+
+@admin_only
+async def on_observation_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    action = query.data.split(":", 1)[1]
+    if action == "start":
+        await query.answer()
+        await query.edit_message_text(
+            "Start Season 3 immediately? This opens submissions and starts the "
+            "28-day clock.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("▶️ Yes, start", callback_data="obsadmin:startyes"),
+                InlineKeyboardButton("Cancel", callback_data="obsadmin:cancel"),
+            ]]),
+        )
+        return
+    if action == "startyes":
+        try:
+            season, sent, failed = await observation.start(context)
+            text = (
+                f"▶️ Season 3 #{season['id']} is active. Start note sent {sent}, "
+                f"failed {failed}.\n\n{observation.status_text(season)}"
+            )
+        except ValueError as exc:
+            text = str(exc)
+        await query.answer()
+        await query.edit_message_text(text)
+        return
+    if action == "retry":
+        season = db.current_observation_season()
+        if season is None or season["status"] != "announced":
+            await query.answer("No announcement to retry.")
+            return
+        _, sent, failed = await observation.announce(
+            context, date_cls.fromisoformat(season["planned_start_date"])
+        )
+        await query.answer(f"Sent {sent}, failed {failed}.")
+        await query.edit_message_text(
+            observation.status_text(), reply_markup=observation.admin_keyboard()
+        )
+        return
+    if action == "people":
+        await query.answer()
+        await query.edit_message_text(observation.people_text(db.current_observation_season()["id"]))
+        return
+    if action == "finish":
+        await query.answer()
+        await query.edit_message_text(
+            "Finish Season 3 and close submissions?",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🏁 Yes, finish", callback_data="obsadmin:finishyes"),
+                InlineKeyboardButton("Cancel", callback_data="obsadmin:cancel"),
+            ]]),
+        )
+        return
+    if action == "finishyes":
+        try:
+            season, sent, failed = await observation.finish(context)
+            text = f"🏁 Season 3 #{season['id']} finished. Sent {sent}, failed {failed}."
+        except ValueError as exc:
+            text = str(exc)
+        await query.answer()
+        await query.edit_message_text(text)
+        return
+    if action == "cancel":
+        await query.answer("Cancelled")
+        await query.edit_message_text(
+            observation.status_text(), reply_markup=observation.admin_keyboard()
+        )
+        return
+    await query.answer()
 
 
 def _correspondence_prompt(args: list[str]) -> tuple[str, str | None] | None:
@@ -536,6 +704,14 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     day = db.get_day(today)
     t = {k: db.get_setting(k) for k in config.DEFAULT_SETTINGS}
     lines = [f"📅 {today}"]
+    obs = db.current_observation_season()
+    if obs is not None:
+        obs_members = db.observation_members(obs["id"])
+        lines.append(
+            f"🌿 Season 3: {obs['status']} · "
+            f"{sum(m['status'] == 'active' for m in obs_members)} active · "
+            f"{len(db.observation_photos_for(obs['id']))} photos — /season_admin"
+        )
     if jobs.is_paused():
         lines.append("⏸ Intermission: paused — /resume when the next season is ready")
     if day is None or not day["prompt_sent_at"]:

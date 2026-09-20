@@ -345,6 +345,50 @@ CREATE TABLE IF NOT EXISTS correspondence_introduction_responses (
     introduction_sent_at TEXT,
     PRIMARY KEY (pair_id, tg_id)
 );
+-- Season 3: an individual practice of returning to one familiar place.
+-- Announcement and start are deliberately separate manual actions.  Every
+-- approved active user is enrolled by default and may opt out of this season
+-- without changing their global user status.
+CREATE TABLE IF NOT EXISTS observation_seasons (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    name               TEXT NOT NULL DEFAULT 'Season 3',
+    status             TEXT NOT NULL DEFAULT 'announced', -- announced|active|finished|cancelled
+    planned_start_date TEXT NOT NULL,
+    duration_days      INTEGER NOT NULL DEFAULT 28,
+    reminder_time      TEXT NOT NULL DEFAULT '19:00',
+    reminder_hours     INTEGER NOT NULL DEFAULT 48,
+    reminder_limit     INTEGER NOT NULL DEFAULT 3,
+    created_at         TEXT NOT NULL,
+    announced_at       TEXT,
+    started_at         TEXT,
+    planned_end_date   TEXT,
+    finished_at        TEXT,
+    weekly_report_at   TEXT
+);
+CREATE TABLE IF NOT EXISTS observation_members (
+    season_id          INTEGER NOT NULL,
+    tg_id              INTEGER NOT NULL,
+    status             TEXT NOT NULL DEFAULT 'active', -- active|opted_out
+    enrolled_at        TEXT NOT NULL,
+    intro_sent_at      TEXT,
+    start_sent_at      TEXT,
+    finish_sent_at     TEXT,
+    opted_out_at       TEXT,
+    reminders_enabled  INTEGER NOT NULL DEFAULT 1,
+    ignored_reminders  INTEGER NOT NULL DEFAULT 0,
+    last_reminder_at   TEXT,
+    unreachable_at     TEXT,
+    PRIMARY KEY (season_id, tg_id)
+);
+CREATE TABLE IF NOT EXISTS observation_photos (
+    season_id   INTEGER NOT NULL,
+    tg_id       INTEGER NOT NULL,
+    local_date  TEXT NOT NULL,
+    file_path   TEXT NOT NULL,
+    file_id     TEXT,
+    submitted_at TEXT NOT NULL,
+    PRIMARY KEY (season_id, tg_id, local_date)
+);
 """
 
 
@@ -407,6 +451,9 @@ def init(path: Path | str | None = None) -> None:
             "correspondence_introduction_responses": [
                 ("share_name", "TEXT"),
                 ("share_username", "TEXT"),
+            ],
+            "observation_members": [
+                ("finish_sent_at", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -2315,3 +2362,201 @@ def end_correspondence_pairs_for_user(tg_id: int, reason: str = "admin") -> list
             "WHERE id=?", (reason, row["id"])
         )
     return [r["id"] for r in rows]
+
+
+# --- Season 3: repeated observation -----------------------------------------
+
+_OBS_SEASON_FIELDS = {
+    "status", "announced_at", "started_at", "planned_end_date", "finished_at",
+    "weekly_report_at", "planned_start_date", "duration_days", "reminder_time",
+    "reminder_hours", "reminder_limit",
+}
+
+
+def create_observation_season(
+    planned_start_date: str,
+    *,
+    duration_days: int = 28,
+    reminder_time: str = "19:00",
+    reminder_hours: int = 48,
+    reminder_limit: int = 3,
+) -> int:
+    return _exec(
+        "INSERT INTO observation_seasons("
+        "planned_start_date, duration_days, reminder_time, reminder_hours, "
+        "reminder_limit, created_at) VALUES(?, ?, ?, ?, ?, ?)",
+        (
+            planned_start_date,
+            duration_days,
+            reminder_time,
+            reminder_hours,
+            reminder_limit,
+            _now(),
+        ),
+    ).lastrowid
+
+
+def get_observation_season(season_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM observation_seasons WHERE id=?", (season_id,)
+    ).fetchone()
+
+
+def current_observation_season() -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM observation_seasons "
+        "WHERE status IN ('announced', 'active') ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+
+def latest_observation_season() -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM observation_seasons ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+
+def set_observation_season_field(season_id: int, field: str, value) -> None:
+    if field not in _OBS_SEASON_FIELDS:
+        raise ValueError(f"unsupported observation season field: {field}")
+    _exec(f"UPDATE observation_seasons SET {field}=? WHERE id=?", (value, season_id))
+
+
+def start_observation_season(season_id: int, started_at: str, end_date: str) -> bool:
+    cur = _exec(
+        "UPDATE observation_seasons SET status='active', started_at=?, "
+        "planned_end_date=? WHERE id=? AND status='announced'",
+        (started_at, end_date, season_id),
+    )
+    return bool(cur.rowcount)
+
+
+def finish_observation_season(season_id: int, finished_at: str) -> bool:
+    cur = _exec(
+        "UPDATE observation_seasons SET status='finished', finished_at=? "
+        "WHERE id=? AND status='active'",
+        (finished_at, season_id),
+    )
+    return bool(cur.rowcount)
+
+
+def ensure_observation_member(season_id: int, tg_id: int) -> bool:
+    """Enroll once without overwriting a later opt-out. Returns True if new."""
+    cur = _exec(
+        "INSERT INTO observation_members(season_id, tg_id, enrolled_at) "
+        "VALUES(?, ?, ?) ON CONFLICT(season_id, tg_id) DO NOTHING",
+        (season_id, tg_id, _now()),
+    )
+    return bool(cur.rowcount)
+
+
+def enroll_active_observation_members(season_id: int) -> int:
+    count = 0
+    for tg_id in active_user_ids():
+        count += int(ensure_observation_member(season_id, tg_id))
+    return count
+
+
+def observation_member(season_id: int, tg_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM observation_members WHERE season_id=? AND tg_id=?",
+        (season_id, tg_id),
+    ).fetchone()
+
+
+def set_observation_member_status(season_id: int, tg_id: int, status: str) -> None:
+    if status not in {"active", "opted_out"}:
+        raise ValueError("observation member status must be active or opted_out")
+    ensure_observation_member(season_id, tg_id)
+    _exec(
+        "UPDATE observation_members SET status=?, opted_out_at=? "
+        "WHERE season_id=? AND tg_id=?",
+        (status, _now() if status == "opted_out" else None, season_id, tg_id),
+    )
+
+
+def set_observation_reminders_enabled(
+    season_id: int, tg_id: int, enabled: bool
+) -> None:
+    _exec(
+        "UPDATE observation_members SET reminders_enabled=? "
+        "WHERE season_id=? AND tg_id=?",
+        (int(enabled), season_id, tg_id),
+    )
+
+
+def mark_observation_member_field(
+    season_id: int, tg_id: int, field: str, value
+) -> None:
+    allowed = {
+        "intro_sent_at", "start_sent_at", "finish_sent_at", "ignored_reminders",
+        "last_reminder_at", "unreachable_at",
+    }
+    if field not in allowed:
+        raise ValueError(f"unsupported observation member field: {field}")
+    _exec(
+        f"UPDATE observation_members SET {field}=? WHERE season_id=? AND tg_id=?",
+        (value, season_id, tg_id),
+    )
+
+
+def observation_members(season_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT m.*, u.first_name, u.username, u.lang, u.status AS user_status, "
+        "COUNT(p.local_date) AS photo_count, MAX(p.submitted_at) AS last_photo_at "
+        "FROM observation_members m JOIN users u ON u.tg_id=m.tg_id "
+        "LEFT JOIN observation_photos p ON p.season_id=m.season_id "
+        "AND p.tg_id=m.tg_id WHERE m.season_id=? GROUP BY m.season_id, m.tg_id "
+        "ORDER BY lower(u.first_name), m.tg_id",
+        (season_id,),
+    ).fetchall()
+
+
+def upsert_observation_photo(
+    season_id: int,
+    tg_id: int,
+    local_date: str,
+    file_path: str,
+    file_id: str | None,
+    submitted_at: str,
+) -> bool:
+    replaced = observation_photo(season_id, tg_id, local_date) is not None
+    _exec(
+        "INSERT INTO observation_photos("
+        "season_id, tg_id, local_date, file_path, file_id, submitted_at) "
+        "VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(season_id, tg_id, local_date) "
+        "DO UPDATE SET file_path=excluded.file_path, file_id=excluded.file_id, "
+        "submitted_at=excluded.submitted_at",
+        (season_id, tg_id, local_date, file_path, file_id, submitted_at),
+    )
+    if not replaced:
+        _exec(
+            "UPDATE observation_members SET ignored_reminders=0, "
+            "last_reminder_at=NULL, unreachable_at=NULL "
+            "WHERE season_id=? AND tg_id=?",
+            (season_id, tg_id),
+        )
+    return replaced
+
+
+def observation_photo(
+    season_id: int, tg_id: int, local_date: str
+) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM observation_photos "
+        "WHERE season_id=? AND tg_id=? AND local_date=?",
+        (season_id, tg_id, local_date),
+    ).fetchone()
+
+
+def observation_photos_for(season_id: int, tg_id: int | None = None) -> list[sqlite3.Row]:
+    if tg_id is None:
+        return _exec(
+            "SELECT * FROM observation_photos WHERE season_id=? "
+            "ORDER BY submitted_at, tg_id",
+            (season_id,),
+        ).fetchall()
+    return _exec(
+        "SELECT * FROM observation_photos WHERE season_id=? AND tg_id=? "
+        "ORDER BY submitted_at",
+        (season_id, tg_id),
+    ).fetchall()

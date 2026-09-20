@@ -111,6 +111,35 @@ optional icebreaker questions, and exchanges names, Telegram usernames and
 answers when both finish or after 24 hours. This does not identify either
 person on the shared page.
 
+## Season 3: one familiar place
+
+Season 3 is a four-week individual practice: every participant chooses one
+familiar place and returns to it, photographing something newly noticed. All
+approved active users are included by default and may privately sit this season
+out without leaving the bot. New users approved while the season is running can
+join immediately; nothing is backfilled.
+
+Announcement and start are separate manual actions. The announcement includes
+an intended date, but submissions open only when the start command is run:
+
+```text
+/season3announce 2026-09-21
+/season3announce 2026-09-21 yes
+# on the actual starting day:
+/season3start yes
+```
+
+`/season_admin` shows live totals and the next action. `/season3people` lists
+each participant's count and last photo, `/season3broadcast EN | RU` sends a
+season-only note, and `/season3export` sends the CSV manifest. Finishing is
+manual with `/season3finish yes`. The daily collage game is paused as soon as
+the season is announced and is not automatically resumed afterward.
+
+Participants use `/season` to view their count, mute reminders, sit out or
+rejoin. One photo is kept per Berlin calendar day; a later photo on the same day
+replaces it. After 48 hours without a new photo, the bot sends a gentle reminder.
+After three unanswered reminders it stays quiet until the person submits again.
+
 ### Private follow-up surveys
 
 Reusable surveys collect a numbered answer plus one optional following text
@@ -213,8 +242,8 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m photobot.main
 ```
 
-Then in Telegram: `/start` the bot, `/admin` opens the daily admin menu,
-`/shortcuts` lists every admin command,
+Then in Telegram: `/start` the bot, `/admin` opens the compact admin menu,
+`/shortcuts` is an alias for that same menu,
 `/addprompt Send a photo of water | Пришли фото с водой`, `/forceprompt` to
 fire it now, send a photo, `/preview` to see the collage.
 
@@ -233,7 +262,8 @@ Tests: `.venv/bin/python -m pytest tests/`
 
 ## Running it day to day
 
-`/admin` prints the compact daily menu; `/shortcuts` prints the full command list:
+`/admin` and `/shortcuts` print the compact daily menu. Older operational
+commands remain callable but are hidden from Telegram's command menu:
 
 | | |
 |---|---|

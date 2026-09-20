@@ -11,7 +11,7 @@ from telegram import (
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
-from . import collage, config, correspondence, db, jobs
+from . import collage, config, correspondence, db, jobs, observation
 from .strings import CHOOSE_LANG, LANG_BUTTONS, STRINGS, t
 
 log = logging.getLogger(__name__)
@@ -110,6 +110,13 @@ async def _register(
 async def _send_welcome(
     context: ContextTypes.DEFAULT_TYPE, chat_id: int, name: str, lang: str | None
 ) -> None:
+    if db.current_observation_season() is not None:
+        # During Season 3 the old daily-collage welcome is misleading. A new or
+        # late-approved person receives the current intro; repeat /start calls
+        # receive their season status instead.
+        if not await observation.maybe_send_current_intro(context, chat_id):
+            await observation.send_member_status(context, chat_id)
+        return
     await context.bot.send_message(
         chat_id, t(lang, "WELCOME", name=name, **_times(lang))
     )
@@ -193,11 +200,17 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     lang = db.get_user_lang(update.effective_user.id)
+    if db.current_observation_season() is not None:
+        await update.message.reply_text(t(lang, "OBS_HELP"))
+        return
     await update.message.reply_text(t(lang, "HELP", **_times(lang)))
 
 
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not await _register(update, context):
+        return
+    if db.current_observation_season() is not None:
+        await observation.cmd_season(update, context)
         return
     lang = db.get_user_lang(update.effective_user.id)
     status, day = day_status()
@@ -217,6 +230,9 @@ async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Show or change the user's post-prompt reminder preference."""
     if not await _register(update, context):
+        return
+    if db.current_observation_season() is not None:
+        await observation.cmd_season(update, context)
         return
     uid = update.effective_user.id
     lang = db.get_user_lang(uid)
@@ -752,6 +768,10 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # A photo starts a different interaction, so it closes any optional survey
     # comment rather than letting a later unrelated text be captured.
     db.clear_pending_survey_comments(update.effective_user.id)
+    # Season 3 owns photos while it is active. It deliberately comes before the
+    # correspondence and paused daily-game routers so one image has one home.
+    if await observation.handle_photo(update, context):
+        return
     # Correspondence is its own season and remains live while the old daily
     # prompt game is paused. A participant's photo belongs to their active
     # chain before we consider the legacy day.

@@ -10,7 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import collage, config, correspondence, db
+from . import collage, config, correspondence, db, observation
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -471,6 +471,9 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     # The correspondence season has its own lifecycle and deliberately keeps
     # running during the daily game's manual intermission.
     await correspondence.tick(context, now)
+    # Season 3 also runs independently of the paused daily collage game. Its
+    # start remains manual; the tick only handles gentle reminders and reports.
+    await observation.tick(context, now)
     today = now.date().isoformat()
     nowt = now.time()
     t = get_times()
