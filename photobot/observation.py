@@ -518,6 +518,48 @@ async def send_reminders(context, season, now: datetime) -> tuple[int, int]:
     return sent, failed
 
 
+async def send_weekly_pulses(context, season, now: datetime) -> tuple[int, int]:
+    """Offer a low-pressure weekly re-entry after normal reminders stop."""
+    sent = failed = 0
+    current_week = now.isocalendar()[:2]
+    for member in db.observation_members(season["id"]):
+        last_pulse = _dt(member["weekly_pulse_at"])
+        last_reminder = _dt(member["last_reminder_at"])
+        reminder_gap = timedelta(hours=season["reminder_hours"])
+        if (
+            member["status"] != "active"
+            or member["user_status"] != "active"
+            or not member["reminders_enabled"]
+            or member["ignored_reminders"] < season["reminder_limit"]
+            or member["unreachable_at"]
+            or last_reminder is None
+            or now - last_reminder < reminder_gap
+            or (last_pulse and last_pulse.isocalendar()[:2] == current_week)
+        ):
+            continue
+        try:
+            await context.bot.send_message(
+                member["tg_id"], t(member["lang"], "OBS_WEEKLY_PULSE")
+            )
+        except Forbidden:
+            db.set_user_status(member["tg_id"], "inactive")
+            db.mark_observation_member_field(
+                season["id"], member["tg_id"], "unreachable_at",
+                now.isoformat(timespec="seconds"),
+            )
+            failed += 1
+        except Exception:
+            log.exception("Season 3 weekly pulse to %s failed", member["tg_id"])
+            failed += 1
+        else:
+            db.mark_observation_member_field(
+                season["id"], member["tg_id"], "weekly_pulse_at",
+                now.isoformat(timespec="seconds"),
+            )
+            sent += 1
+    return sent, failed
+
+
 async def tick(context, now: datetime | None = None) -> None:
     now = now or now_local()
     season = db.current_observation_season()
@@ -527,6 +569,7 @@ async def tick(context, now: datetime | None = None) -> None:
     if now.time() >= reminder_at:
         await send_reminders(context, season, now)
     if now.weekday() == 6 and now.time() >= time(18, 0):
+        await send_weekly_pulses(context, season, now)
         last = _dt(season["weekly_report_at"])
         if last is None or last.date() != now.date():
             db.set_observation_season_field(

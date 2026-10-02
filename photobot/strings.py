@@ -302,6 +302,12 @@ STRINGS = {
             "Если сегодня в нём заметится что-то новое, пришли фотографию. "
             "Если нет — ничего страшного."
         ),
+        "OBS_WEEKLY_PULSE": (
+            "Небольшая записка: дверь в третий сезон всё ещё открыта 🌿\n\n"
+            "Ничего навёрстывать не нужно, и искать что-то особенное тоже. "
+            "Если захочется вернуться, сфотографируй своё место таким, какое оно сегодня, "
+            "и пришли сюда. Одной фотографии вполне достаточно."
+        ),
         "OBS_ACCEPTED": "Снимок №{count} сохранён. Спасибо, что посмотрел(а) ещё раз 🌿",
         "OBS_REPLACED": "Заменил сегодняшний снимок на новый ✅",
         "OBS_ALBUM_ONE": "Из альбома я сохранил только первую фотографию.",
@@ -802,6 +808,12 @@ STRINGS = {
             "A small reminder about your place 🌿\n\n"
             "If something new catches your eye today, send a photograph. If not, "
             "that’s completely fine."
+        ),
+        "OBS_WEEKLY_PULSE": (
+            "A small note: the door to Season 3 is still open 🌿\n\n"
+            "You don’t need to catch up or find anything extraordinary. If you "
+            "feel like returning, photograph your place as it is today and send "
+            "it here. One photograph is enough."
         ),
         "OBS_ACCEPTED": "Photograph {count} is safe with me. Thank you for looking again 🌿",
         "OBS_REPLACED": "Replaced today’s photograph with the new one ✅",

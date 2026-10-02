@@ -377,6 +377,7 @@ CREATE TABLE IF NOT EXISTS observation_members (
     reminders_enabled  INTEGER NOT NULL DEFAULT 1,
     ignored_reminders  INTEGER NOT NULL DEFAULT 0,
     last_reminder_at   TEXT,
+    weekly_pulse_at    TEXT,
     unreachable_at     TEXT,
     PRIMARY KEY (season_id, tg_id)
 );
@@ -454,6 +455,7 @@ def init(path: Path | str | None = None) -> None:
             ],
             "observation_members": [
                 ("finish_sent_at", "TEXT"),
+                ("weekly_pulse_at", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -2489,7 +2491,7 @@ def mark_observation_member_field(
 ) -> None:
     allowed = {
         "intro_sent_at", "start_sent_at", "finish_sent_at", "ignored_reminders",
-        "last_reminder_at", "unreachable_at",
+        "last_reminder_at", "weekly_pulse_at", "unreachable_at",
     }
     if field not in allowed:
         raise ValueError(f"unsupported observation member field: {field}")

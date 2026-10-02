@@ -138,7 +138,9 @@ the season is announced and is not automatically resumed afterward.
 Participants use `/season` to view their count, mute reminders, sit out or
 rejoin. One photo is kept per Berlin calendar day; a later photo on the same day
 replaces it. After 48 hours without a new photo, the bot sends a gentle reminder.
-After three unanswered reminders it stays quiet until the person submits again.
+After three unanswered reminders, the normal reminder cycle stops. While the
+person remains opted in, the bot leaves a low-pressure re-entry note no more
+than once a week; submitting a photo resets the normal reminder cycle.
 
 ### Private follow-up surveys
 

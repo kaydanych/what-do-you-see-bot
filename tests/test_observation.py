@@ -191,3 +191,43 @@ def test_reminders_begin_after_48_hours_and_stop_after_three(monkeypatch):
         assert db.observation_member(season["id"], 1)["ignored_reminders"] == 3
 
     asyncio.run(scenario())
+
+
+def test_weekly_pulse_reopens_door_without_restarting_reminders(monkeypatch):
+    monkeypatch.setattr(observation, "now_local", fixed_now)
+
+    async def scenario():
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot)
+        await observation.announce(context, date(2026, 9, 21))
+        await observation.start(context)
+        season = db.current_observation_season()
+        bot.messages.clear()
+        for uid in (1, 2):
+            db.mark_observation_member_field(
+                season["id"], uid, "ignored_reminders", 3
+            )
+            db.mark_observation_member_field(
+                season["id"], uid, "last_reminder_at",
+                datetime(2026, 9, 24, 18, 0, tzinfo=config.TZ).isoformat(),
+            )
+        db.set_observation_reminders_enabled(season["id"], 2, False)
+
+        sunday = datetime(2026, 9, 27, 18, 0, tzinfo=config.TZ)
+        assert await observation.send_weekly_pulses(
+            context, season, sunday
+        ) == (1, 0)
+        assert bot.messages[-1][0] == 1
+        assert "door to Season 3" in bot.messages[-1][1]
+        assert db.observation_member(season["id"], 1)["ignored_reminders"] == 3
+
+        # Repeated scheduler ticks in the same week do not duplicate the pulse.
+        assert await observation.send_weekly_pulses(
+            context, season, sunday + timedelta(hours=1)
+        ) == (0, 0)
+        # A still-capped participant receives one fresh note in the next week.
+        assert await observation.send_weekly_pulses(
+            context, season, sunday + timedelta(days=7)
+        ) == (1, 0)
+
+    asyncio.run(scenario())
