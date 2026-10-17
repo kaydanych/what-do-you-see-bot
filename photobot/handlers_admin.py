@@ -247,9 +247,18 @@ async def cmd_season3export(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if season is None:
         await update.message.reply_text("No Season 3 yet.")
         return
-    path = config.DATA_DIR / "exports" / f"season3-{season['id']}-manifest.csv"
-    count = observation.export_manifest(season["id"], path)
-    with path.open("rb") as handle:
+    observation.sync_exports(season["id"])
+    root = config.DATA_DIR / "exports"
+    manifest = root / f"season3-{season['id']}-manifest.csv"
+    status = root / f"season3-{season['id']}-status.csv"
+    count = len(db.observation_photos_for(season["id"]))
+    with status.open("rb") as handle:
+        await context.bot.send_document(
+            update.effective_chat.id,
+            handle,
+            caption=f"Season 3 #{season['id']}: participant status and submission dates.",
+        )
+    with manifest.open("rb") as handle:
         await context.bot.send_document(
             update.effective_chat.id,
             handle,

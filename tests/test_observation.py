@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from photobot import config, db, observation
+from photobot import config, db, handlers_admin, observation
 
 
 class FakeBot:
@@ -182,6 +182,34 @@ def test_photo_is_accepted_only_after_manual_start(monkeypatch, tmp_path):
             assert len(list(csv.DictReader(handle))) == 1
 
     asyncio.run(scenario())
+
+
+def test_export_sends_old_submission_status_without_photo_download(tmp_path):
+    sid = db.create_observation_season("2026-09-21")
+    db.enroll_active_observation_members(sid)
+    db.upsert_observation_photo(
+        sid, 1, "2026-09-22", "/nas/old-photo.jpg", None,
+        "2026-09-22T12:00:00+02:00",
+    )
+
+    class DocumentBot:
+        def __init__(self):
+            self.documents = []
+
+        async def send_document(self, chat_id, document, **kwargs):
+            self.documents.append((chat_id, document.read().decode("utf-8")))
+
+    bot = DocumentBot()
+    update = SimpleNamespace(
+        effective_user=SimpleNamespace(id=99),
+        effective_chat=SimpleNamespace(id=99),
+        message=SimpleNamespace(reply_text=None),
+    )
+    asyncio.run(handlers_admin.cmd_season3export(update, SimpleNamespace(bot=bot)))
+    assert len(bot.documents) == 2
+    assert "2026-09-22" in bot.documents[0][1]
+    assert "/nas/old-photo.jpg" in bot.documents[1][1]
+    assert "Person 2" in bot.documents[0][1]
 
 
 def test_reminders_begin_after_48_hours_and_stop_after_three(monkeypatch):

@@ -131,7 +131,8 @@ an intended date, but submissions open only when the start command is run:
 
 `/season_admin` shows live totals and the next action. `/season3people` lists
 each participant's count and last photo, `/season3broadcast EN | RU` sends a
-season-only note, and `/season3export` sends the CSV manifest. Finishing is
+season-only note, and `/season3export` sends the participant status and full
+historical submission manifest as small CSV files. Finishing is
 manual with `/season3finish yes`. The daily collage game is paused as soon as
 the season is announced and is not automatically resumed afterward.
 
