@@ -6,7 +6,9 @@ lives in SQLite so retries and NAS restarts do not duplicate successful sends.
 
 import asyncio
 import csv
+import io
 import logging
+import os
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -14,7 +16,7 @@ from pathlib import Path
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden, NetworkError, TimedOut
 
-from . import collage, config, db
+from . import collage, config, db, submission_status
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -350,6 +352,11 @@ async def handle_photo(update, context) -> bool:
         season["id"], uid, local_date, str(dest),
         msg.photo[-1].file_id if msg.photo else None, submitted,
     )
+    try:
+        sync_exports(season["id"])
+    except OSError:
+        log.exception("could not update Season 3 submission files")
+    submission_status.sync_safely()
     count = len(db.observation_photos_for(season["id"], uid))
     if msg.media_group_id:
         await msg.reply_text(t(lang, "OBS_ALBUM_ONE") + "\n\n" + t(lang, "OBS_ACCEPTED", count=count))
@@ -562,7 +569,12 @@ async def send_weekly_pulses(context, season, now: datetime) -> tuple[int, int]:
 
 async def tick(context, now: datetime | None = None) -> None:
     now = now or now_local()
-    season = db.current_observation_season()
+    season = db.current_observation_season() or db.latest_observation_season()
+    if season is not None:
+        try:
+            sync_exports(season["id"])
+        except OSError:
+            log.exception("could not update Season 3 submission files")
     if season is None or season["status"] != "active":
         return
     reminder_at = time.fromisoformat(season["reminder_time"])
@@ -580,13 +592,55 @@ async def tick(context, now: datetime | None = None) -> None:
 
 def export_manifest(season_id: int, path: Path) -> int:
     rows = db.observation_photos_for(season_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(("season_id", "tg_id", "local_date", "submitted_at", "file_path"))
-        for row in rows:
-            writer.writerow((
-                row["season_id"], row["tg_id"], row["local_date"],
-                row["submitted_at"], row["file_path"],
-            ))
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow(("season_id", "tg_id", "local_date", "submitted_at", "file_path"))
+    for row in rows:
+        writer.writerow((
+            row["season_id"], row["tg_id"], row["local_date"],
+            row["submitted_at"], row["file_path"],
+        ))
+    _write_export(path, output.getvalue())
     return len(rows)
+
+
+def _write_export(path: Path, content: str) -> None:
+    """Replace a small NAS export atomically; skip writes when it is unchanged."""
+    payload = content.encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and path.read_bytes() == payload:
+        return
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_bytes(payload)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def sync_exports(season_id: int) -> None:
+    """Keep lightweight submission records beside the NAS photo archive."""
+    season = db.get_observation_season(season_id)
+    if season is None:
+        return
+    root = config.DATA_DIR / "exports"
+    export_manifest(season_id, root / f"season3-{season_id}-manifest.csv")
+    photos = db.observation_photos_for(season_id)
+    dates_by_user: dict[int, list[str]] = {}
+    for photo in photos:
+        dates_by_user.setdefault(photo["tg_id"], []).append(photo["local_date"])
+    output = io.StringIO(newline="")
+    writer = csv.writer(output)
+    writer.writerow((
+        "season_id", "season_status", "tg_id", "first_name", "username",
+        "member_status", "user_status", "photo_count", "last_photo_at",
+        "submitted_dates",
+    ))
+    for member in db.observation_members(season_id):
+        dates = sorted(dates_by_user.get(member["tg_id"], []))
+        writer.writerow((
+            season_id, season["status"], member["tg_id"], member["first_name"],
+            member["username"], member["status"], member["user_status"],
+            len(dates), member["last_photo_at"] or "", ";".join(dates),
+        ))
+    _write_export(root / f"season3-{season_id}-status.csv", output.getvalue())

@@ -11,7 +11,7 @@ from telegram import (
 from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import ContextTypes
 
-from . import collage, config, correspondence, db, jobs, observation
+from . import collage, config, correspondence, db, jobs, observation, submission_status
 from .strings import CHOOSE_LANG, LANG_BUTTONS, STRINGS, t
 
 log = logging.getLogger(__name__)
@@ -831,6 +831,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     replaced = db.upsert_photo(
         date, uid, str(dest), msg.photo[-1].file_id if msg.photo else None
     )
+    submission_status.sync_safely()
     # The streak lands here rather than on the evening collage: it's a private
     # "well done, you", and it's worth more at the moment you showed up than
     # hours later next to the thing everyone is looking at. A streak of 1 is

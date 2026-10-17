@@ -16,7 +16,7 @@ from pathlib import Path
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.error import Forbidden, NetworkError, TimedOut
 
-from . import collage, config, db
+from . import collage, config, db, submission_status
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -462,6 +462,7 @@ async def handle_photo(update, context) -> bool:
         return True
     if previous is not None and previous["file_path"] != str(dest):
         Path(previous["file_path"]).unlink(missing_ok=True)
+    submission_status.sync_safely()
 
     if now < deliver_at:
         await msg.reply_text(t(

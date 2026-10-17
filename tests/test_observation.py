@@ -1,6 +1,7 @@
 """Season 3: manual announcement/start and repeated-place submissions."""
 
 import asyncio
+import csv
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -144,7 +145,7 @@ def test_late_joiner_gets_live_intro_once(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_photo_is_accepted_only_after_manual_start(monkeypatch):
+def test_photo_is_accepted_only_after_manual_start(monkeypatch, tmp_path):
     monkeypatch.setattr(observation, "now_local", fixed_now)
 
     async def scenario():
@@ -159,6 +160,17 @@ def test_photo_is_accepted_only_after_manual_start(monkeypatch):
         assert await observation.handle_photo(update, context) is True
         assert len(db.observation_photos_for(1, 1)) == 1
         assert "Photograph 1" in update.message.replies[-1][0]
+        manifest = tmp_path / "exports" / "season3-1-manifest.csv"
+        status = tmp_path / "exports" / "season3-1-status.csv"
+        with manifest.open(newline="", encoding="utf-8") as handle:
+            rows = list(csv.DictReader(handle))
+        assert len(rows) == 1
+        assert rows[0]["local_date"] == "2026-09-20"
+        with status.open(newline="", encoding="utf-8") as handle:
+            people = {int(row["tg_id"]): row for row in csv.DictReader(handle)}
+        assert people[1]["photo_count"] == "1"
+        assert people[1]["submitted_dates"] == "2026-09-20"
+        assert people[2]["photo_count"] == "0"
 
         update2 = SimpleNamespace(
             effective_user=SimpleNamespace(id=1), message=FakeMessage(jpeg_bytes())
@@ -166,6 +178,8 @@ def test_photo_is_accepted_only_after_manual_start(monkeypatch):
         assert await observation.handle_photo(update2, context) is True
         assert len(db.observation_photos_for(1, 1)) == 1
         assert "Replaced" in update2.message.replies[-1][0]
+        with manifest.open(newline="", encoding="utf-8") as handle:
+            assert len(list(csv.DictReader(handle))) == 1
 
     asyncio.run(scenario())
 

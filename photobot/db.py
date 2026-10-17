@@ -2562,3 +2562,19 @@ def observation_photos_for(season_id: int, tg_id: int | None = None) -> list[sql
         "ORDER BY submitted_at",
         (season_id, tg_id),
     ).fetchall()
+
+
+def submission_status_seasons() -> tuple[list[sqlite3.Row], list[sqlite3.Row]]:
+    """All season records for the server-side submission snapshot."""
+    return (
+        _exec("SELECT * FROM correspondence_seasons ORDER BY id").fetchall(),
+        _exec("SELECT * FROM observation_seasons ORDER BY id").fetchall(),
+    )
+
+
+def submission_status_dates() -> list[str]:
+    """Include empty days and days whose photos were all excluded."""
+    rows = _exec(
+        "SELECT date FROM days UNION SELECT date FROM photos ORDER BY date DESC"
+    ).fetchall()
+    return [row["date"] for row in rows]

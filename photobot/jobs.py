@@ -10,7 +10,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import collage, config, correspondence, db, observation
+from . import collage, config, correspondence, db, observation, submission_status
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -468,6 +468,7 @@ async def tick(context: ContextTypes.DEFAULT_TYPE) -> None:
     current time against DB settings, /settimes changes apply instantly and
     missed jobs (NAS reboot) catch up on the next tick."""
     now = now_local()
+    submission_status.sync_safely()
     # The correspondence season has its own lifecycle and deliberately keeps
     # running during the daily game's manual intermission.
     await correspondence.tick(context, now)

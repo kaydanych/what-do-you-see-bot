@@ -135,6 +135,15 @@ season-only note, and `/season3export` sends the CSV manifest. Finishing is
 manual with `/season3finish yes`. The daily collage game is paused as soon as
 the season is announced and is not automatically resumed afterward.
 
+The NAS keeps lightweight submission records in `data/exports/`, separate from
+the photos. `submissions-status.json` covers daily prompts, correspondence
+chains (including pending drafts), and Season 3 participants and photos.
+`season3-<id>-manifest.csv` and `season3-<id>-status.csv` provide compact Season 3
+lists. These files are refreshed after submissions and within a minute of other
+status changes or a restart, so checking submission progress does not require
+downloading the photo archive. They are private files under the gitignored
+`data/` directory and contain participant identities and local photo paths.
+
 Participants use `/season` to view their count, mute reminders, sit out or
 rejoin. One photo is kept per Berlin calendar day; a later photo on the same day
 replaces it. After 48 hours without a new photo, the bot sends a gentle reminder.
