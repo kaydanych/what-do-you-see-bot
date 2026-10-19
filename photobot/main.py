@@ -217,6 +217,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("season3people", adm.cmd_season3people))
     app.add_handler(CommandHandler("season3broadcast", adm.cmd_season3broadcast))
     app.add_handler(CommandHandler("season3export", adm.cmd_season3export))
+    app.add_handler(CommandHandler("season3siteexport", adm.cmd_season3siteexport))
     app.add_handler(CommandHandler("season3finish", adm.cmd_season3finish))
     app.add_handler(CommandHandler("season3consent", adm.cmd_season3consent))
     app.add_handler(CommandHandler("status", adm.cmd_status))

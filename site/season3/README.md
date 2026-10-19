@@ -1,12 +1,14 @@
 # Season 3 gallery
 
-`scripts/build_season3_site.py` builds a static gallery from a **finished** NAS
-backup and the latest `season3-<id>-status.csv` sent by `/season3export`.
+`scripts/build_season3_site.py` builds a static gallery from the **finished**
+Season 3 photo ZIP and the matching `season3-<id>-status.csv` sent by
+`/season3siteexport`. The ZIP contains only this season's photos and a minimal
+database, so the full bot backup is unnecessary.
 Run it after checking the consent counts in `/season_admin`:
 
 ```bash
 .venv/bin/python scripts/build_season3_site.py \
-  '/path/to/photobot-backup.zip' '/path/to/season3-1-status.csv' \
+  '/path/to/season3-1-site-source.zip' '/path/to/season3-1-status.csv' \
   --output data/season3-site-build-1 \
   --links data/season3-site-links.json \
   --base-url 'https://your-published-site.example/'

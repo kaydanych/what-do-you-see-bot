@@ -9,6 +9,9 @@ import csv
 import io
 import logging
 import os
+import sqlite3
+import tempfile
+import zipfile
 from collections import OrderedDict
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -706,3 +709,53 @@ def sync_exports(season_id: int) -> None:
             member["publication_decided_at"] or "",
         ))
     _write_export(root / f"season3-{season_id}-status.csv", output.getvalue())
+
+
+def build_site_archive(season_id: int) -> Path:
+    """Package only Season 3 photos and a minimal DB for the gallery builder."""
+    season = db.get_observation_season(season_id)
+    if season is None or season["status"] != "finished":
+        raise ValueError("Finish Season 3 before exporting its site photos")
+    root = config.DATA_DIR / "exports"
+    root.mkdir(parents=True, exist_ok=True)
+    destination = root / f"season3-{season_id}-site-source.zip"
+    photos_root = config.PHOTOS_DIR.resolve()
+    with tempfile.TemporaryDirectory(dir=root) as tmp_dir:
+        temp = Path(tmp_dir)
+        minimal_db = temp / "photobot.db"
+        with sqlite3.connect(minimal_db) as connection:
+            connection.executescript("""
+                CREATE TABLE observation_seasons (
+                    id INTEGER PRIMARY KEY, status TEXT,
+                    planned_start_date TEXT, planned_end_date TEXT
+                );
+                CREATE TABLE observation_photos (
+                    season_id INTEGER, tg_id INTEGER, local_date TEXT,
+                    file_path TEXT, submitted_at TEXT
+                );
+            """)
+            connection.execute(
+                "INSERT INTO observation_seasons VALUES (?, ?, ?, ?)",
+                (season_id, season["status"], season["planned_start_date"],
+                 season["planned_end_date"]),
+            )
+            prepared = []
+            for photo in db.observation_photos_for(season_id):
+                source = Path(photo["file_path"]).resolve()
+                if not source.is_relative_to(photos_root) or not source.is_file():
+                    raise ValueError(f"Season 3 photo is missing or outside the photo store: {photo['local_date']}")
+                relative = source.relative_to(photos_root).as_posix()
+                stored_path = f"/data/photos/{relative}"
+                connection.execute(
+                    "INSERT INTO observation_photos VALUES (?, ?, ?, ?, ?)",
+                    (season_id, photo["tg_id"], photo["local_date"],
+                     stored_path, photo["submitted_at"]),
+                )
+                prepared.append((source, f"photobot/data/photos/{relative}"))
+        package = temp / destination.name
+        with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_STORED) as archive:
+            archive.write(minimal_db, "photobot/data/photobot.db")
+            for source, arcname in prepared:
+                archive.write(source, arcname)
+        os.replace(package, destination)
+    return destination

@@ -2,6 +2,7 @@
 
 import asyncio
 import csv
+import zipfile
 from datetime import date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
@@ -217,6 +218,23 @@ def test_finish_retry_asks_for_consent_after_prior_generic_note(monkeypatch):
         assert db.observation_member(sid, 1)["consent_asked_at"]
 
     asyncio.run(scenario())
+
+
+def test_site_export_contains_only_season_photos_and_minimal_database(tmp_path):
+    sid = db.create_observation_season("2026-09-21")
+    db.start_observation_season(sid, fixed_now().isoformat(), "2026-10-18")
+    db.finish_observation_season(sid, fixed_now().isoformat())
+    photo = config.PHOTOS_DIR / f"season3-{sid}" / "2026-09-21" / "u1.jpg"
+    photo.parent.mkdir(parents=True)
+    photo.write_bytes(jpeg_bytes())
+    db.upsert_observation_photo(sid, 1, "2026-09-21", str(photo), None, fixed_now().isoformat())
+    archive = observation.build_site_archive(sid)
+    with zipfile.ZipFile(archive) as package:
+        assert set(package.namelist()) == {
+            "photobot/data/photobot.db",
+            f"photobot/data/photos/season3-{sid}/2026-09-21/u1.jpg",
+        }
+        assert package.read(f"photobot/data/photos/season3-{sid}/2026-09-21/u1.jpg") == jpeg_bytes()
 
 
 def test_photo_is_accepted_only_after_manual_start(monkeypatch, tmp_path):

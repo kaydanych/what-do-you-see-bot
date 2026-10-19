@@ -294,6 +294,42 @@ async def cmd_season3export(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 
 @admin_only
+async def cmd_season3siteexport(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send the small, final Season 3 photo package and fresh consent status."""
+    season = db.latest_observation_season()
+    if season is None or season["status"] != "finished":
+        await update.message.reply_text("Finish Season 3 before exporting the website photos.")
+        return
+    try:
+        observation.sync_exports(season["id"])
+        package = observation.build_site_archive(season["id"])
+    except (OSError, ValueError) as exc:
+        log.exception("Season 3 site export failed")
+        await update.message.reply_text(f"Could not prepare the Season 3 site export: {exc}")
+        return
+    status = config.DATA_DIR / "exports" / f"season3-{season['id']}-status.csv"
+    with status.open("rb") as handle:
+        await context.bot.send_document(
+            update.effective_chat.id, handle,
+            caption="Season 3 participant status and publication choices (private admin file).",
+        )
+    # The Bot API upload limit is 50 MB. Keep the package on the NAS if it
+    # grows beyond that; no partial or truncated photo set is sent.
+    if package.stat().st_size >= 49_000_000:
+        await update.message.reply_text(
+            f"Photo package is too large for Telegram ({package.stat().st_size // 1_000_000} MB). "
+            f"Download data/exports/{package.name} from the NAS instead."
+        )
+        return
+    with package.open("rb") as handle:
+        await context.bot.send_document(
+            update.effective_chat.id, handle,
+            caption=f"Season 3 #{season['id']} photos for the consent-filtered website.",
+            read_timeout=120, write_timeout=120,
+        )
+
+
+@admin_only
 async def on_observation_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     query = update.callback_query
     action = query.data.split(":", 1)[1]

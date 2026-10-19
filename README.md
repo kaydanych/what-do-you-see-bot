@@ -143,8 +143,9 @@ notes and requests after the season is closed. `/season_admin` shows the Yes/No/
 unanswered totals. The daily collage game is paused as soon as
 the season is announced and is not automatically resumed afterward.
 
-Once choices have been collected, use a fresh `/season3export` status CSV and
-a fresh NAS backup to build the static gallery with
+Once choices have been collected, `/season3siteexport` sends a fresh status CSV
+and a Season 3 only photo ZIP (about 40 MB for the current season). Use those to
+build the static gallery with
 `scripts/build_season3_site.py` (see `site/season3/README.md`). The website is
 published separately after checking the choices; finishing the season does not
 publish photos or send links automatically.
