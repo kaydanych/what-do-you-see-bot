@@ -133,8 +133,21 @@ an intended date, but submissions open only when the start command is run:
 each participant's count and last photo, `/season3broadcast EN | RU` sends a
 season-only note, and `/season3export` sends the participant status and full
 historical submission manifest as small CSV files. Finishing is
-manual with `/season3finish yes`. The daily collage game is paused as soon as
+manual with `/season3finish yes`. It closes submissions, sends final notes, and
+asks every reachable contributor with at least two photos whether their unnamed
+sequence may appear in a public gallery. The answer is saved in SQLite and in
+the status CSV; only an explicit Yes permits public inclusion. A No or no answer
+means a separate unlisted page. Contributors with one photo receive a private
+thank-you, without a publication request. `/season3consent yes` retries unsent
+notes and requests after the season is closed. `/season_admin` shows the Yes/No/
+unanswered totals. The daily collage game is paused as soon as
 the season is announced and is not automatically resumed afterward.
+
+Once choices have been collected, use a fresh `/season3export` status CSV and
+a fresh NAS backup to build the static gallery with
+`scripts/build_season3_site.py` (see `site/season3/README.md`). The website is
+published separately after checking the choices; finishing the season does not
+publish photos or send links automatically.
 
 The NAS keeps lightweight submission records in `data/exports/`, separate from
 the photos. `submissions-status.json` covers daily prompts, correspondence

@@ -373,6 +373,9 @@ CREATE TABLE IF NOT EXISTS observation_members (
     intro_sent_at      TEXT,
     start_sent_at      TEXT,
     finish_sent_at     TEXT,
+    consent_asked_at   TEXT,
+    publication_choice TEXT, -- yes|no; NULL means no public permission
+    publication_decided_at TEXT,
     opted_out_at       TEXT,
     reminders_enabled  INTEGER NOT NULL DEFAULT 1,
     ignored_reminders  INTEGER NOT NULL DEFAULT 0,
@@ -456,6 +459,9 @@ def init(path: Path | str | None = None) -> None:
             "observation_members": [
                 ("finish_sent_at", "TEXT"),
                 ("weekly_pulse_at", "TEXT"),
+                ("consent_asked_at", "TEXT"),
+                ("publication_choice", "TEXT"),
+                ("publication_decided_at", "TEXT"),
             ],
         }
         for table, columns in migrations.items():
@@ -2492,6 +2498,7 @@ def mark_observation_member_field(
     allowed = {
         "intro_sent_at", "start_sent_at", "finish_sent_at", "ignored_reminders",
         "last_reminder_at", "weekly_pulse_at", "unreachable_at",
+        "consent_asked_at",
     }
     if field not in allowed:
         raise ValueError(f"unsupported observation member field: {field}")
@@ -2499,6 +2506,24 @@ def mark_observation_member_field(
         f"UPDATE observation_members SET {field}=? WHERE season_id=? AND tg_id=?",
         (value, season_id, tg_id),
     )
+
+
+def set_observation_publication_choice(
+    season_id: int, tg_id: int, choice: str
+) -> bool:
+    """Record an explicit answer only from someone with a shareable sequence."""
+    if choice not in {"yes", "no"}:
+        raise ValueError("publication choice must be yes or no")
+    cur = _exec(
+        "UPDATE observation_members SET publication_choice=?, "
+        "publication_decided_at=? WHERE season_id=? AND tg_id=? "
+        "AND EXISTS (SELECT 1 FROM observation_photos p WHERE "
+        "p.season_id=observation_members.season_id "
+        "AND p.tg_id=observation_members.tg_id GROUP BY p.tg_id "
+        "HAVING COUNT(*)>=2)",
+        (choice, _now(), season_id, tg_id),
+    )
+    return bool(cur.rowcount)
 
 
 def observation_members(season_id: int) -> list[sqlite3.Row]:

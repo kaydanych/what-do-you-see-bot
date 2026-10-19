@@ -184,7 +184,8 @@ async def cmd_season3start(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def cmd_season3finish(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.args or context.args[0].lower() != "yes":
         await update.message.reply_text(
-            "This closes submissions and sends the final note.\n"
+            "This closes submissions, sends final notes, and asks contributors "
+            "with 2+ photos for public gallery consent.\n"
             "Confirm with /season3finish yes"
         )
         return
@@ -194,7 +195,30 @@ async def cmd_season3finish(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text(str(exc))
         return
     await update.message.reply_text(
-        f"🏁 Season 3 #{season['id']} finished. Final note: sent {sent}, failed {failed}."
+        f"🏁 Season 3 #{season['id']} finished. Final/consent messages: "
+        f"sent {sent}, failed {failed}.\n"
+        "Use /season_admin for consent totals and /season3export for the CSV. "
+        "Retry unsent messages with /season3consent yes."
+    )
+
+
+@admin_only
+async def cmd_season3consent(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    season = db.latest_observation_season()
+    if season is None or season["status"] != "finished":
+        await update.message.reply_text("Finish Season 3 first with /season3finish yes.")
+        return
+    if not context.args or context.args[0].lower() != "yes":
+        await update.message.reply_text(
+            "Retry any unsent final notes or consent requests. "
+            "Already delivered requests are not repeated.\n"
+            "Confirm with /season3consent yes"
+        )
+        return
+    season, sent, failed = await observation.finish(context)
+    await update.message.reply_text(
+        f"Season 3 #{season['id']}: sent {sent} pending message(s); {failed} failed.\n"
+        "Use /season_admin for consent totals."
     )
 
 

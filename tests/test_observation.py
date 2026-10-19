@@ -145,6 +145,80 @@ def test_late_joiner_gets_live_intro_once(monkeypatch):
     asyncio.run(scenario())
 
 
+def test_finish_asks_only_eligible_contributors_and_saves_answer(monkeypatch, tmp_path):
+    monkeypatch.setattr(observation, "now_local", fixed_now)
+    sid = db.create_observation_season("2026-09-21")
+    db.enroll_active_observation_members(sid)
+    db.start_observation_season(sid, fixed_now().isoformat(), "2026-10-18")
+    for day in ("2026-09-21", "2026-09-22"):
+        db.upsert_observation_photo(sid, 1, day, str(tmp_path / f"{day}.jpg"), None, fixed_now().isoformat())
+    db.upsert_observation_photo(sid, 2, "2026-09-21", str(tmp_path / "one.jpg"), None, fixed_now().isoformat())
+
+    async def scenario():
+        bot = FakeBot()
+        context = SimpleNamespace(bot=bot)
+        _season, sent, failed = await observation.finish(context)
+        assert (sent, failed) == (2, 0)
+        assert len(bot.messages) == 2
+        assert "May I show yours publicly" in bot.messages[0][1]
+        assert bot.messages[0][2]["reply_markup"].inline_keyboard[0][0].callback_data == f"obs:{sid}:publish_yes"
+        assert "Спасибо за твой снимок" in bot.messages[1][1]
+        assert "reply_markup" not in bot.messages[1][2]
+        assert db.observation_member(sid, 1)["publication_choice"] is None
+        assert db.observation_member(sid, 1)["consent_asked_at"]
+        assert db.observation_member(sid, 2)["consent_asked_at"] is None
+
+        class Query:
+            data = f"obs:{sid}:publish_yes"
+            edits = []
+
+            async def answer(self, *args):
+                pass
+
+            async def edit_message_text(self, text, **kwargs):
+                self.edits.append(text)
+
+        query = Query()
+        update = SimpleNamespace(callback_query=query, effective_user=SimpleNamespace(id=1))
+        await observation.on_callback(update, context)
+        assert db.observation_member(sid, 1)["publication_choice"] == "yes"
+        assert query.edits and "shared gallery" in query.edits[-1]
+        query.data = f"obs:{sid}:publish_no"
+        await observation.on_callback(update, context)
+        assert db.observation_member(sid, 1)["publication_choice"] == "no"
+        assert db.set_observation_publication_choice(sid, 2, "yes") is False
+
+        status = tmp_path / "exports" / f"season3-{sid}-status.csv"
+        with status.open(newline="", encoding="utf-8") as handle:
+            rows = {int(row["tg_id"]): row for row in csv.DictReader(handle)}
+        assert rows[1]["publication_choice"] == "no"
+        assert rows[2]["publication_choice"] == ""
+        _season, sent, failed = await observation.finish(context)
+        assert (sent, failed) == (0, 0)
+
+    asyncio.run(scenario())
+
+
+def test_finish_retry_asks_for_consent_after_prior_generic_note(monkeypatch):
+    monkeypatch.setattr(observation, "now_local", fixed_now)
+    sid = db.create_observation_season("2026-09-21")
+    db.enroll_active_observation_members(sid)
+    db.start_observation_season(sid, fixed_now().isoformat(), "2026-10-18")
+    db.finish_observation_season(sid, fixed_now().isoformat())
+    db.mark_observation_member_field(sid, 1, "finish_sent_at", fixed_now().isoformat())
+    for day in ("2026-09-21", "2026-09-22"):
+        db.upsert_observation_photo(sid, 1, day, day, None, fixed_now().isoformat())
+
+    async def scenario():
+        bot = FakeBot()
+        await observation.finish(SimpleNamespace(bot=bot))
+        assert len([m for m in bot.messages if m[0] == 1]) == 1
+        assert "I'm preparing a website" in bot.messages[0][1]
+        assert db.observation_member(sid, 1)["consent_asked_at"]
+
+    asyncio.run(scenario())
+
+
 def test_photo_is_accepted_only_after_manual_start(monkeypatch, tmp_path):
     monkeypatch.setattr(observation, "now_local", fixed_now)
 

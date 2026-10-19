@@ -67,6 +67,13 @@ def member_keyboard(season_id: int, lang: str | None, member=None) -> InlineKeyb
     return InlineKeyboardMarkup(rows)
 
 
+def publication_keyboard(season_id: int, lang: str | None) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(t(lang, "OBS_PUBLISH_YES"), callback_data=f"obs:{season_id}:publish_yes"),
+        InlineKeyboardButton(t(lang, "OBS_PUBLISH_NO"), callback_data=f"obs:{season_id}:publish_no"),
+    ]])
+
+
 def _remember_album(group_id: str) -> bool:
     if group_id in _seen_albums:
         return True
@@ -209,23 +216,43 @@ async def finish(context) -> tuple[object, int, int]:
         season = db.get_observation_season(season["id"])
     sent = failed = 0
     for member in db.observation_members(season["id"]):
-        if (
-            member["status"] != "active"
-            or member["user_status"] != "active"
-            or member["finish_sent_at"]
-        ):
+        if member["user_status"] != "active":
             continue
+        has_sequence = member["photo_count"] >= 2
+        needs_finish = member["status"] == "active" and not member["finish_sent_at"]
+        needs_consent = has_sequence and not member["consent_asked_at"]
+        if not needs_finish and not needs_consent:
+            continue
+        if needs_finish and needs_consent:
+            key = "OBS_FINISHED_CONSENT"
+        elif needs_finish and member["photo_count"] == 1:
+            key = "OBS_FINISHED_ONE"
+        elif needs_finish:
+            key = "OBS_FINISHED"
+        else:
+            key = "OBS_CONSENT_ASK"
         try:
             await context.bot.send_message(
-                member["tg_id"], t(member["lang"], "OBS_FINISHED")
+                member["tg_id"], t(member["lang"], key),
+                **({"reply_markup": publication_keyboard(season["id"], member["lang"])}
+                   if needs_consent else {}),
             )
-            db.mark_observation_member_field(
-                season["id"], member["tg_id"], "finish_sent_at", now
-            )
+            if needs_finish:
+                db.mark_observation_member_field(
+                    season["id"], member["tg_id"], "finish_sent_at", now
+                )
+            if needs_consent:
+                db.mark_observation_member_field(
+                    season["id"], member["tg_id"], "consent_asked_at", now
+                )
             sent += 1
         except Exception:
             log.exception("Season 3 finish to %s failed", member["tg_id"])
             failed += 1
+    try:
+        sync_exports(season["id"])
+    except OSError:
+        log.exception("could not update Season 3 submission files after finish")
     return db.get_observation_season(season["id"]), sent, failed
 
 
@@ -266,6 +293,14 @@ def status_text(season=None) -> str:
         f"Reminders: {counts['muted']} muted · {counts['paused']} auto-paused",
         f"Unreachable: {counts['unreachable']}",
     ])
+    if season["status"] == "finished":
+        eligible = [m for m in members if m["photo_count"] >= 2]
+        lines.append(
+            "Publication choices (2+ photos): "
+            f"{sum(m['publication_choice'] == 'yes' for m in eligible)} yes · "
+            f"{sum(m['publication_choice'] == 'no' for m in eligible)} no · "
+            f"{sum(m['publication_choice'] is None for m in eligible)} unanswered"
+        )
     if season["status"] == "announced":
         lines.append("\nNext: /season3start yes when you want submissions to open.")
     elif season["status"] == "active":
@@ -378,6 +413,30 @@ async def on_callback(update, context) -> None:
     season = db.get_observation_season(season_id)
     uid = update.effective_user.id
     user = db.get_user(uid)
+    if action in {"publish_yes", "publish_no"}:
+        member = db.observation_member(season_id, uid)
+        if (
+            season is None or season["status"] != "finished"
+            or user is None
+            or member is None or not member["consent_asked_at"]
+        ):
+            await query.answer("This choice is no longer available.")
+            return
+        choice = action.removeprefix("publish_")
+        if not db.set_observation_publication_choice(season_id, uid, choice):
+            await query.answer("This choice is no longer available.")
+            return
+        lang = db.get_user_lang(uid)
+        try:
+            sync_exports(season_id)
+        except OSError:
+            log.exception("could not update Season 3 consent export")
+        await query.answer()
+        await query.edit_message_text(
+            t(lang, "OBS_PUBLISH_ACCEPTED" if choice == "yes" else "OBS_PUBLISH_DECLINED"),
+            reply_markup=publication_keyboard(season_id, lang),
+        )
+        return
     if (
         season is None
         or season["status"] not in {"announced", "active"}
@@ -634,7 +693,8 @@ def sync_exports(season_id: int) -> None:
     writer.writerow((
         "season_id", "season_status", "tg_id", "first_name", "username",
         "member_status", "user_status", "photo_count", "last_photo_at",
-        "submitted_dates",
+        "submitted_dates", "consent_asked_at", "publication_choice",
+        "publication_decided_at",
     ))
     for member in db.observation_members(season_id):
         dates = sorted(dates_by_user.get(member["tg_id"], []))
@@ -642,5 +702,7 @@ def sync_exports(season_id: int) -> None:
             season_id, season["status"], member["tg_id"], member["first_name"],
             member["username"], member["status"], member["user_status"],
             len(dates), member["last_photo_at"] or "", ";".join(dates),
+            member["consent_asked_at"] or "", member["publication_choice"] or "",
+            member["publication_decided_at"] or "",
         ))
     _write_export(root / f"season3-{season_id}-status.csv", output.getvalue())

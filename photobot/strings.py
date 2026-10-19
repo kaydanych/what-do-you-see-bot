@@ -331,8 +331,35 @@ STRINGS = {
             "/stop — полностью отписаться от бота"
         ),
         "OBS_FINISHED": (
-            "Третий сезон завершён. Спасибо, что возвращался(ась), смотрел(а) и "
-            "делился(ась) своим местом 🌿"
+            "Третий сезон завершён. Спасибо, что был(а) рядом и смотрел(а) вместе с нами 🌿"
+        ),
+        "OBS_FINISHED_ONE": (
+            "Третий сезон завершён. Спасибо за твой снимок и за внимание к своему месту 🌿 "
+            "Я сохраню его как часть этого сезона."
+        ),
+        "OBS_FINISHED_CONSENT": (
+            "Третий сезон завершён. Спасибо, что возвращался(ась) к своему месту 🌿\n\n"
+            "Я готовлю сайт с сериями фотографий. Можно ли показать твою серию "
+            "публично, без имени и ника? Сайт будет доступен всем по ссылке, "
+            "и я поделюсь ею со всеми участниками бота, даже если они не снимали в этом сезоне.\n\n"
+            "Если ответишь «Нет» или не ответишь, твоей серии не будет в общей галерее. "
+            "Для тебя я подготовлю отдельную ссылку без списка других серий."
+        ),
+        "OBS_CONSENT_ASK": (
+            "Я готовлю сайт с сериями третьего сезона. Можно ли показать твою серию "
+            "публично, без имени и ника? Общей ссылкой я поделюсь со всеми "
+            "участниками бота. Если ответишь «Нет» или не ответишь, твоя серия "
+            "останется вне общей галереи; я подготовлю для тебя отдельную ссылку."
+        ),
+        "OBS_PUBLISH_YES": "Да, показать всем",
+        "OBS_PUBLISH_NO": "Нет, отдельная ссылка",
+        "OBS_PUBLISH_ACCEPTED": (
+            "Спасибо! Ты разрешил(а) показать серию без имени в общей галерее. "
+            "Если передумаешь, нажми «Нет»."
+        ),
+        "OBS_PUBLISH_DECLINED": (
+            "Понял: твоей серии не будет в общей галерее. Я подготовлю для тебя "
+            "отдельную ссылку. Если передумаешь, нажми «Да»."
         ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
@@ -837,8 +864,38 @@ STRINGS = {
             "/stop — unsubscribe from the bot entirely"
         ),
         "OBS_FINISHED": (
-            "Season 3 is complete. Thank you for returning, looking, and sharing "
-            "your place 🌿"
+            "Season 3 is complete. Thank you for being here and looking with us 🌿"
+        ),
+        "OBS_FINISHED_ONE": (
+            "Season 3 is complete. Thank you for your photograph and for looking "
+            "at your place 🌿 I'll keep it as part of this season."
+        ),
+        "OBS_FINISHED_CONSENT": (
+            "Season 3 is complete. Thank you for returning to your place 🌿\n\n"
+            "I'm preparing a website of photo sequences. May I show yours publicly, "
+            "without your name or username? Anyone with the link can see it, and I'll "
+            "share the site with everyone in the bot, including people who did not "
+            "photograph this season.\n\n"
+            "If you choose No or don't answer, your sequence will stay out of the "
+            "shared gallery. I'll prepare a separate link for you without a list of "
+            "other sequences."
+        ),
+        "OBS_CONSENT_ASK": (
+            "I'm preparing a website of Season 3 photo sequences. May I show yours "
+            "publicly, without your name or username? I'll share the public site "
+            "with everyone in the bot. If you choose No or don't answer, your "
+            "sequence stays out of the shared gallery; I'll prepare a separate "
+            "link for you."
+        ),
+        "OBS_PUBLISH_YES": "Yes, show everyone",
+        "OBS_PUBLISH_NO": "No, separate link",
+        "OBS_PUBLISH_ACCEPTED": (
+            "Thank you. You've allowed your unnamed sequence in the shared gallery. "
+            "If you change your mind, tap No."
+        ),
+        "OBS_PUBLISH_DECLINED": (
+            "Understood. Your sequence will stay out of the shared gallery. "
+            "I'll prepare a separate link for you. If you change your mind, tap Yes."
         ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
