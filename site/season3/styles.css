@@ -39,6 +39,9 @@ h2 { font-size: 14px; font-weight: 500; margin: 0; }
 .footer p { margin: 0; }
 .empty { padding: 30px; color: var(--muted); text-align: center; }
 .viewer-header { position: sticky; top: 0; z-index: 5; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 20px; min-height: 80px; padding: 12px 38px; background: rgba(16,17,18,.97); border-bottom: 1px solid var(--line); }
+.private-view .viewer-header { grid-template-columns: 1fr auto; }
+.private-view .viewer-title { display: block; justify-self: start; }
+.private-view #back, .private-view #next-place-top, .private-view .sequence-footer { display: none; }
 .text-button { border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 12px 0; min-height: 44px; justify-self: start; font-size: 14px; }
 .text-button:hover:not(:disabled) { border-color: var(--paper); }
 .viewer-title { margin: 0; font-family: Georgia, "Times New Roman", serif; font-size: 22px; }
@@ -86,6 +89,8 @@ h2 { font-size: 14px; font-weight: 500; margin: 0; }
   .card-date { font-size: 12px; }
   .footer { flex-direction: column; gap: 12px; margin-top: 40px; }
   .viewer-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "back next" "position language"; gap: 0 12px; padding: 8px 20px; min-height: 104px; }
+  .private-view .viewer-header { grid-template-areas: "title language" "position language"; min-height: 88px; }
+  .private-view .viewer-title { display: block; grid-area: title; font-size: 19px; }
   #back { grid-area: back; }
   #next-place-top { grid-area: next; justify-self: end; }
   #position { grid-area: position; align-self: center; }

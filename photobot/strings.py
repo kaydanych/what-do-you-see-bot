@@ -361,6 +361,15 @@ STRINGS = {
             "Понял: твоей серии не будет в общей галерее. Я подготовлю для тебя "
             "отдельную ссылку. Если передумаешь, нажми «Да»."
         ),
+        "SEASON3_SITE_PUBLIC": (
+            "Третий сезон стал коллекцией мест, куда мы возвращались. "
+            "Посмотрите анонимные серии фотографий на сайте: {url}"
+        ),
+        "SEASON3_SITE_PRIVATE": (
+            "Ваша серия фотографий здесь: {url}\n\n"
+            "Эта страница не показана в общей галерее. Её может открыть любой, "
+            "у кого есть ссылка."
+        ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (
             "📮 Новый сезон: визуальная переписка\n\n"
@@ -896,6 +905,15 @@ STRINGS = {
         "OBS_PUBLISH_DECLINED": (
             "Understood. Your sequence will stay out of the shared gallery. "
             "I'll prepare a separate link for you. If you change your mind, tap Yes."
+        ),
+        "SEASON3_SITE_PUBLIC": (
+            "Season 3 has become a collection of places we returned to. "
+            "Explore the anonymous photo sequences on our website: {url}"
+        ),
+        "SEASON3_SITE_PRIVATE": (
+            "Your photo sequence is here: {url}\n\n"
+            "This unlisted page is outside the public gallery. Anyone with its "
+            "link can open it."
         ),
         # --- Season 2: anonymous visual correspondence ---
         "CORR_ENROLL_OPEN": (

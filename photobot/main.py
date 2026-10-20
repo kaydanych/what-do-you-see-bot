@@ -220,6 +220,7 @@ def build_app() -> Application:
     app.add_handler(CommandHandler("season3siteexport", adm.cmd_season3siteexport))
     app.add_handler(CommandHandler("season3finish", adm.cmd_season3finish))
     app.add_handler(CommandHandler("season3consent", adm.cmd_season3consent))
+    app.add_handler(CommandHandler("season3publishat", adm.cmd_season3publishat))
     app.add_handler(CommandHandler("status", adm.cmd_status))
     app.add_handler(CommandHandler("users", adm.cmd_users))
     app.add_handler(CommandHandler("pending", adm.cmd_pending))

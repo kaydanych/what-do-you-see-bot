@@ -2,6 +2,7 @@
 
 const season = window.OBSERVATION_SEASON;
 const places = season?.places || [];
+const privateView = Boolean(season?.private);
 const $ = (id) => document.getElementById(id);
 const copy = {
   en: {
@@ -14,6 +15,7 @@ const copy = {
     archive: "Photographs collected through", empty: "The photographic collection is not available yet.",
     missing: "This photograph could not be loaded.", photo: "Photograph", open: "Open", language: "Language",
     sequence: "Photographs in chronological order", other: "Other places", position: "Photograph position",
+    yourPlace: "Your place",
   },
   ru: {
     title: "Места, куда<br>мы возвращаемся.", season: "СЕЗОН 3 · ЛИЧНАЯ ПРАКТИКА",
@@ -25,6 +27,7 @@ const copy = {
     archive: "Фотографии собраны по", empty: "Коллекция фотографий пока недоступна.",
     missing: "Не удалось загрузить эту фотографию.", photo: "Фотография", open: "Открыть", language: "Язык",
     sequence: "Фотографии в хронологическом порядке", other: "Другие места", position: "Номер фотографии",
+    yourPlace: "Твоё место",
   },
 };
 let language = "en";
@@ -35,7 +38,7 @@ let lastCard = null;
 let scrollScheduled = false;
 
 const number = (n) => String(n).padStart(2, "0");
-const label = (place) => `${copy[language].place} ${number(place.number)}`;
+const label = (place) => privateView ? copy[language].yourPlace : `${copy[language].place} ${number(place.number)}`;
 function date(value, short = false, year = false) {
   if (!value) return "";
   return new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-GB", {
@@ -111,7 +114,7 @@ function setLanguage(value) {
 }
 
 function route() {
-  const place = places.find((item) => `#${item.id}` === window.location.hash);
+  const place = privateView ? places[0] : places.find((item) => `#${item.id}` === window.location.hash);
   if (place) {
     if (!activePlace) overviewScroll = window.scrollY;
     activePlace = place;
@@ -148,7 +151,7 @@ function updatePosition() {
   });
   $("position").textContent = `${number(nearest + 1)} / ${number(figures.length)}`;
 }
-function closePlace() { window.location.hash = ""; }
+function closePlace() { if (!privateView) window.location.hash = ""; }
 $("back").addEventListener("click", closePlace);
 $("previous-place").addEventListener("click", () => { const place = places[places.indexOf(activePlace) - 1]; if (place) window.location.hash = place.id; });
 $("next-place").addEventListener("click", () => { const place = places[places.indexOf(activePlace) + 1]; if (place) window.location.hash = place.id; });
@@ -161,7 +164,7 @@ window.addEventListener("scroll", () => {
 window.addEventListener("resize", updatePosition);
 document.addEventListener("keydown", (event) => {
   if (!activePlace) return;
-  if (event.key === "Escape") { closePlace(); return; }
+  if (event.key === "Escape") { if (!privateView) closePlace(); return; }
   if (event.target.closest("button, a, input, textarea, select")) return;
   if (!["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) return;
   event.preventDefault();
@@ -171,5 +174,6 @@ document.addEventListener("keydown", (event) => {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   figures[Math.max(0, Math.min(figures.length - 1, current + step))]?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
 });
+if (privateView) document.body.classList.add("private-view");
 setLanguage(language);
 route();

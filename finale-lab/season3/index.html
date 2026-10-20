@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101112" />
+    <meta name="description" content="Season 3 of What Do You See? A photographic practice of returning to one familiar place." />
+    <title>Places we return to — What Do You See?</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%23101112'/%3E%3Crect x='7' y='7' width='18' height='18' fill='none' stroke='%23e2d4ae' stroke-width='2'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23e2d4ae'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="season-data.js" defer></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main id="overview">
+      <header class="masthead">
+        <span class="wordmark">what do you see?</span>
+        <div class="languages" role="group" aria-label="Language">
+          <button type="button" data-language="ru" aria-pressed="false">RU</button>
+          <button type="button" data-language="en" aria-pressed="true">EN</button>
+        </div>
+      </header>
+      <section class="intro" aria-labelledby="season-title">
+        <div class="intro-title">
+          <p class="eyebrow" data-copy="season">SEASON 3 · AN INDIVIDUAL PRACTICE</p>
+          <h1 id="season-title" data-copy="title">Places we<br />return to.</h1>
+        </div>
+        <div class="intro-copy">
+          <p data-copy="intro">One familiar place. Four weeks. Each time we return, we look for something we haven’t noticed before.</p>
+          <p class="secondary" data-copy="about">A window, a street, a corner of a room—or somewhere closer to ourselves. These photographs are small records of looking again.</p>
+          <p id="season-dates" class="season-dates"></p>
+        </div>
+      </section>
+      <section class="collection" aria-labelledby="collection-title">
+        <div class="collection-heading">
+          <h2 id="collection-title" data-copy="collection">A collection of places</h2>
+          <p data-copy="invitation">Choose a place. Stay a little while.</p>
+        </div>
+        <div id="place-grid" class="place-grid"></div>
+        <p id="empty" class="empty" hidden></p>
+      </section>
+      <footer class="footer">
+        <p id="archive-note"></p>
+        <a href="https://t.me/what_do_you_see_bot" target="_blank" rel="noreferrer">@what_do_you_see_bot</a>
+      </footer>
+    </main>
+
+    <main id="viewer" hidden>
+      <header class="viewer-header">
+        <button type="button" id="back" class="text-button" data-copy="back">All places</button>
+        <p id="viewer-title" class="viewer-title"></p>
+        <div class="viewer-tools">
+          <button type="button" id="next-place-top" class="text-button" data-copy="next">Next place</button>
+          <span id="position" class="position" aria-label="Photograph position"></span>
+          <div class="languages" role="group" aria-label="Language">
+            <button type="button" data-language="ru" aria-pressed="false">RU</button>
+            <button type="button" data-language="en" aria-pressed="true">EN</button>
+          </div>
+        </div>
+      </header>
+      <section class="sequence-intro">
+        <p class="eyebrow" data-copy="sequenceLabel">RETURNING TO ONE PLACE</p>
+        <h1 id="place-title" tabindex="-1"></h1>
+        <p id="place-dates" class="secondary"></p>
+      </section>
+      <section id="sequence" class="sequence" aria-label="Photographs in chronological order"></section>
+      <footer class="sequence-footer">
+        <nav aria-label="Other places">
+          <button id="previous-place" type="button" class="text-button" data-copy="previous">Previous place</button>
+          <button id="next-place" type="button" class="text-button" data-copy="next">Next place</button>
+        </nav>
+      </footer>
+    </main>
+    <noscript><p class="empty">Please enable JavaScript to open the photographic sequences.</p></noscript>
+  </body>
+</html>

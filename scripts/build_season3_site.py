@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import secrets
 import sqlite3
@@ -23,10 +24,13 @@ from PIL import Image, ImageOps
 TEMPLATE = Path(__file__).resolve().parents[1] / "site" / "season3"
 
 
-def _copy_page(destination: Path, *, private: bool = False) -> None:
+def _copy_page(
+    destination: Path, *, private: bool = False, template: Path = TEMPLATE,
+    cache_key: str = "",
+) -> None:
     destination.mkdir(parents=True, exist_ok=True)
     for name in ("index.html", "styles.css", "app.js"):
-        content = (TEMPLATE / name).read_text(encoding="utf-8")
+        content = (template / name).read_text(encoding="utf-8")
         if private and name == "index.html":
             content = content.replace(
                 '<meta name="theme-color"',
@@ -34,14 +38,20 @@ def _copy_page(destination: Path, *, private: bool = False) -> None:
                 '    <meta name="theme-color"',
                 1,
             )
+        if name == "index.html" and cache_key:
+            for asset in ("styles.css", "season-data.js", "app.js"):
+                content = content.replace(
+                    f'"{asset}"', f'"{asset}?v={cache_key}"', 1
+                )
         (destination / name).write_text(content, encoding="utf-8")
 
 
-def _write_data(destination: Path, season, rows: list[dict]) -> None:
+def _write_data(destination: Path, season, rows: list[dict], *, private: bool = False) -> None:
     payload = {
         "start": season["planned_start_date"],
         "end": season["planned_end_date"],
         "status": "finished",
+        "private": private,
         "through": max((p["date"] for row in rows for p in row["photos"]), default=None),
         "places": rows,
     }
@@ -81,7 +91,10 @@ def _render_sequence(archive, series, destination: Path, number: int) -> dict:
     return {"id": key, "number": number, "cover": f"assets/{key}-cover.jpg", "photos": photos}
 
 
-def build(archive_path: Path, status_path: Path, output: Path, links_path: Path, base_url: str = "") -> dict:
+def build(
+    archive_path: Path, status_path: Path, output: Path, links_path: Path,
+    base_url: str = "", *, template: Path = TEMPLATE,
+) -> dict:
     output = output.resolve()
     links_path = links_path.resolve()
     if output.exists():
@@ -96,6 +109,9 @@ def build(archive_path: Path, status_path: Path, output: Path, links_path: Path,
     if len(choices) != len(status_rows):
         raise ValueError("Duplicate Telegram ID in status CSV")
 
+    cache_input = status_path.read_bytes() + str(archive_path.stat().st_size).encode()
+    cache_input += b"".join((template / name).read_bytes() for name in ("index.html", "styles.css", "app.js"))
+    cache_key = hashlib.sha256(cache_input).hexdigest()[:12]
     links = json.loads(links_path.read_text(encoding="utf-8")) if links_path.exists() else {}
     with zipfile.ZipFile(archive_path) as archive, tempfile.TemporaryDirectory() as temp:
         db_path = Path(temp) / "photobot.db"
@@ -129,8 +145,18 @@ def build(archive_path: Path, status_path: Path, output: Path, links_path: Path,
         if set(series_by_person) - set(choices):
             raise ValueError("The status CSV is missing a photo contributor")
 
-        _copy_page(output)
+        _copy_page(output, template=template, cache_key=cache_key)
         (output / "robots.txt").write_text("User-agent: *\nDisallow: /private/\n", encoding="utf-8")
+        # Some simple static servers list directories by default. Keep the
+        # unlisted page tokens out of a casual visit to /private/.
+        private_root = output / "private"
+        private_root.mkdir()
+        (private_root / "index.html").write_text(
+            '<!doctype html><html lang="en"><meta charset="utf-8">'
+            '<meta name="robots" content="noindex,nofollow">'
+            '<title>Page unavailable</title><p>Page unavailable.</p></html>\n',
+            encoding="utf-8",
+        )
         public_rows = []
         deliveries = []
         used_tokens = set(links.values())
@@ -150,9 +176,12 @@ def build(archive_path: Path, status_path: Path, output: Path, links_path: Path,
                 links[key] = token
                 used_tokens.add(token)
             private_dir = output / "private" / token
-            _copy_page(private_dir, private=True)
-            _write_data(private_dir, season, [_render_sequence(archive, series, private_dir, 1)])
-            relative = f"private/{token}/"
+            _copy_page(private_dir, private=True, template=template, cache_key=cache_key)
+            _write_data(
+                private_dir, season, [_render_sequence(archive, series, private_dir, 1)],
+                private=True,
+            )
+            relative = f"private/{token}/index.html"
             deliveries.append((uid, "private", base_url.rstrip("/") + "/" + relative if base_url else relative))
         _write_data(output, season, public_rows)
 
@@ -178,8 +207,13 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True, help="New static site directory")
     parser.add_argument("--links", type=Path, required=True, help="Private identity-to-link map outside web root")
     parser.add_argument("--base-url", default="", help="Published site URL for delivery CSV")
+    parser.add_argument("--template", type=Path, default=TEMPLATE,
+                        help="Existing gallery source (index.html, app.js, styles.css)")
     args = parser.parse_args()
-    print(json.dumps(build(args.archive, args.status, args.output, args.links, args.base_url), indent=2))
+    print(json.dumps(build(
+        args.archive, args.status, args.output, args.links, args.base_url,
+        template=args.template,
+    ), indent=2))
 
 
 if __name__ == "__main__":

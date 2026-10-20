@@ -16,7 +16,7 @@ from telegram import (
 from telegram.error import Forbidden
 from telegram.ext import ContextTypes
 
-from . import config, correspondence, db, handlers_user as usr, jobs, observation, version
+from . import config, correspondence, db, handlers_user as usr, jobs, observation, season3_publication, version
 from .strings import t
 
 log = logging.getLogger(__name__)
@@ -219,6 +219,53 @@ async def cmd_season3consent(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         f"Season 3 #{season['id']}: sent {sent} pending message(s); {failed} failed.\n"
         "Use /season_admin for consent totals."
+    )
+
+
+@admin_only
+async def cmd_season3publishat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Schedule one consent-checked website announcement in Berlin time."""
+    season = db.latest_observation_season()
+    if context.args == ["status"]:
+        publication = db.latest_season3_publication(season["id"]) if season else None
+        await update.message.reply_text(
+            f"Season 3 website send: {publication['status']} for {publication['due_at']}"
+            if publication else "No active Season 3 website send."
+        )
+        return
+    if context.args == ["cancel"]:
+        publication = db.active_season3_publication(season["id"]) if season else None
+        if publication and (
+            publication["status"] == "scheduled"
+            or (publication["status"] == "blocked"
+                and not db.season3_publication_delivery_count(publication["id"]))
+        ):
+            db.set_season3_publication_status(publication["id"], "cancelled")
+            await update.message.reply_text("Season 3 website send cancelled.")
+        else:
+            await update.message.reply_text("There is no unsent schedule to cancel.")
+        return
+    if len(context.args) != 6 or context.args[-1].lower() != "yes":
+        await update.message.reply_text(
+            "Usage: /season3publishat YYYY-MM-DD HH:MM FINGERPRINT "
+            "NO_TG_ID PRIVATE_URL yes\n"
+            "Berlin time. This sends the public website to all active users "
+            "and the private page only to the explicit No contributor."
+        )
+        return
+    due_date, due_time, fingerprint, raw_uid, private_url, _ = context.args
+    try:
+        uid = int(raw_uid)
+        publication_id, due = season3_publication.schedule(
+            due_date, due_time, fingerprint, uid, private_url
+        )
+    except (ValueError, TypeError) as exc:
+        await update.message.reply_text(str(exc))
+        return
+    await update.message.reply_text(
+        f"Scheduled Season 3 website send #{publication_id} for "
+        f"{due:%Y-%m-%d %H:%M} Berlin time. Use /season3publishat status "
+        "to check or /season3publishat cancel before it begins."
     )
 
 

@@ -393,6 +393,29 @@ CREATE TABLE IF NOT EXISTS observation_photos (
     submitted_at TEXT NOT NULL,
     PRIMARY KEY (season_id, tg_id, local_date)
 );
+-- A publication send is deliberately separate from finishing the season.
+-- The consent fingerprint prevents a stale website announcement if answers
+-- change after the site was built. Delivery rows survive NAS restarts.
+CREATE TABLE IF NOT EXISTS season3_publications (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    season_id INTEGER NOT NULL,
+    due_at TEXT NOT NULL,
+    consent_fingerprint TEXT NOT NULL,
+    private_tg_id INTEGER NOT NULL,
+    private_url TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'scheduled', -- scheduled|sending|blocked|complete|cancelled
+    created_at TEXT NOT NULL,
+    completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS season3_publication_deliveries (
+    publication_id INTEGER NOT NULL,
+    tg_id INTEGER NOT NULL,
+    kind TEXT NOT NULL, -- public|private
+    sent_at TEXT,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    PRIMARY KEY (publication_id, tg_id, kind)
+);
 """
 
 
@@ -2536,6 +2559,94 @@ def observation_members(season_id: int) -> list[sqlite3.Row]:
         "ORDER BY lower(u.first_name), m.tg_id",
         (season_id,),
     ).fetchall()
+
+
+def active_season3_publication(season_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM season3_publications WHERE season_id=? "
+        "AND status IN ('scheduled', 'sending', 'blocked') ORDER BY id DESC LIMIT 1",
+        (season_id,),
+    ).fetchone()
+
+
+def latest_season3_publication(season_id: int) -> sqlite3.Row | None:
+    return _exec(
+        "SELECT * FROM season3_publications WHERE season_id=? "
+        "AND status!='cancelled' ORDER BY id DESC LIMIT 1",
+        (season_id,),
+    ).fetchone()
+
+
+def due_season3_publications(now: str) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM season3_publications WHERE status IN ('scheduled', 'sending') "
+        "AND due_at<=? ORDER BY id",
+        (now,),
+    ).fetchall()
+
+
+def create_season3_publication(
+    season_id: int, due_at: str, fingerprint: str, private_tg_id: int, private_url: str
+) -> int:
+    return _exec(
+        "INSERT INTO season3_publications "
+        "(season_id, due_at, consent_fingerprint, private_tg_id, private_url, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (season_id, due_at, fingerprint, private_tg_id, private_url, _now()),
+    ).lastrowid
+
+
+def set_season3_publication_status(publication_id: int, status: str) -> None:
+    if status not in {"sending", "blocked", "complete", "cancelled"}:
+        raise ValueError("invalid publication status")
+    _exec(
+        "UPDATE season3_publications SET status=?, completed_at=? WHERE id=?",
+        (status, _now() if status == "complete" else None, publication_id),
+    )
+
+
+def prepare_season3_publication_deliveries(
+    publication_id: int, private_tg_id: int
+) -> None:
+    _exec(
+        "INSERT OR IGNORE INTO season3_publication_deliveries "
+        "(publication_id, tg_id, kind) "
+        "SELECT ?, tg_id, 'public' FROM users WHERE status='active'",
+        (publication_id,),
+    )
+    _exec(
+        "INSERT OR IGNORE INTO season3_publication_deliveries "
+        "(publication_id, tg_id, kind) VALUES (?, ?, 'private')",
+        (publication_id, private_tg_id),
+    )
+
+
+def pending_season3_publication_deliveries(publication_id: int) -> list[sqlite3.Row]:
+    return _exec(
+        "SELECT * FROM season3_publication_deliveries WHERE publication_id=? "
+        "AND sent_at IS NULL ORDER BY CASE kind WHEN 'public' THEN 0 ELSE 1 END, tg_id",
+        (publication_id,),
+    ).fetchall()
+
+
+def season3_publication_delivery_count(publication_id: int) -> int:
+    row = _exec(
+        "SELECT COUNT(*) AS n FROM season3_publication_deliveries "
+        "WHERE publication_id=?", (publication_id,)
+    ).fetchone()
+    return row["n"]
+
+
+def mark_season3_publication_delivery(
+    publication_id: int, tg_id: int, kind: str, error: str | None = None,
+    skip: bool = False,
+) -> None:
+    _exec(
+        "UPDATE season3_publication_deliveries SET attempts=attempts+1, "
+        "sent_at=CASE WHEN ? IS NULL OR ? THEN ? ELSE sent_at END, last_error=? "
+        "WHERE publication_id=? AND tg_id=? AND kind=?",
+        (error, int(skip), _now(), error, publication_id, tg_id, kind),
+    )
 
 
 def upsert_observation_photo(

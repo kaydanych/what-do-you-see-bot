@@ -58,14 +58,22 @@ def test_public_gallery_contains_only_yes_and_private_pages_are_separate(tmp_pat
     assert result["one_photo_excluded"] == 1
     assert len(list((output / "assets").glob("*.jpg"))) == 5
     public_data = (output / "season-data.js").read_text(encoding="utf-8")
-    assert len(json.loads(public_data.split("=", 1)[1].rstrip(";\n"))["places"]) == 1
+    public_payload = json.loads(public_data.split("=", 1)[1].rstrip(";\n"))
+    assert len(public_payload["places"]) == 1
+    assert public_payload["private"] is False
+    assert 'season-data.js?v=' in (output / "index.html").read_text(encoding="utf-8")
     token = json.loads(links.read_text(encoding="utf-8"))["2"]
     assert len(token) >= 32
     private = output / "private" / token
     assert "noindex,nofollow" in (private / "index.html").read_text(encoding="utf-8")
+    assert "noindex,nofollow" in (output / "private" / "index.html").read_text(encoding="utf-8")
+    assert token not in (output / "private" / "index.html").read_text(encoding="utf-8")
+    private_payload = json.loads((private / "season-data.js").read_text(encoding="utf-8").split("=", 1)[1].rstrip(";\n"))
+    assert private_payload["private"] is True
+    assert len(private_payload["places"]) == 1
     assert len(list((private / "assets").glob("*.jpg"))) == 5
     assert not (output / "private-links.json").exists()
     with (tmp_path / "season3-delivery.csv").open(newline="", encoding="utf-8") as handle:
         deliveries = list(csv.DictReader(handle))
     assert {row["tg_id"] for row in deliveries} == {"1", "2", "4"}
-    assert next(row["url"] for row in deliveries if row["tg_id"] == "2").endswith(f"/private/{token}/")
+    assert next(row["url"] for row in deliveries if row["tg_id"] == "2").endswith(f"/private/{token}/index.html")
